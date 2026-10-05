@@ -5,6 +5,7 @@ const REQUIRED_ENVIRONMENT = [
   "DB_NAME",
   "GEMINI_API_KEY",
 ];
+const ingestionRunRepository = require("./ingestionRunRepository");
 const LOCK_NAME = "urban-danger-automated-ingestion";
 
 function validateIngestionEnvironment(environment) {
@@ -45,34 +46,89 @@ function errorCategory(error) {
   return "unexpected";
 }
 
+async function runManualIngestion({
+  dbPool,
+  runPipeline,
+  logger = console,
+  now = Date.now,
+  runHistory = ingestionRunRepository,
+} = {}) {
+  const startedAt = now();
+  let connection;
+  let runId;
+  try {
+    connection = await dbPool.getConnection();
+    runId = await runHistory.startRun(connection, new Date(startedAt));
+    const result = await runPipeline();
+    const sourceFailures = Number(result.sourcesFailed || 0);
+    const candidateFailures = Number(result.verificationFailures || 0);
+    await runHistory.finishRun(connection, runId, {
+      status: sourceFailures > 0 || candidateFailures > 0 ? "PARTIAL" : "SUCCEEDED",
+      completedAt: new Date(now()),
+      durationMs: Math.max(0, now() - startedAt),
+      sources_checked: result.sourcesChecked,
+      articles_collected: result.articlesCollected,
+      articles_prefiltered: result.preFiltered,
+      articles_processed: result.articlesProcessed,
+      candidates_found: result.candidatesExtracted,
+      verified_count: result.verifiedCandidates,
+      rejected_count: result.candidatesRejected,
+      duplicate_count: result.duplicates,
+      inserted_count: result.insertedIncidents,
+      error_count: sourceFailures + candidateFailures,
+    });
+    return { status: "COMPLETED", result };
+  } catch (error) {
+    const category = errorCategory(error);
+    if (runId !== undefined) {
+      try {
+        await runHistory.finishRun(connection, runId, {
+          status: "FAILED",
+          completedAt: new Date(now()),
+          durationMs: Math.max(0, now() - startedAt),
+          error_count: 1,
+          errorMessage: `Ingestion failed (${category}).`,
+        });
+      } catch {
+        logger.error("[manual-ingestion] failed category=history_update");
+      }
+    }
+    logger.error(`[manual-ingestion] failed category=${category}`);
+    return { status: "FAILED", category };
+  } finally {
+    connection?.release();
+  }
+}
+
 async function runScheduledIngestion({
   environment = process.env,
   dbPool,
   runPipeline,
   logger = console,
   now = Date.now,
+  runHistory = ingestionRunRepository,
 } = {}) {
   const startedAt = now();
   logger.info("[scheduled-ingestion] start");
 
-  try {
-    validateIngestionEnvironment(environment);
-  } catch (error) {
-    logger.error(
-      `[scheduled-ingestion] failed category=${errorCategory(error)}`,
-    );
-    return { status: "FAILED", category: errorCategory(error) };
-  }
-
   let connection;
   let locked = false;
+  let runId;
   try {
     connection = await dbPool.getConnection();
+    runId = await runHistory.startRun(connection, new Date(startedAt));
+    validateIngestionEnvironment(environment);
     const [lockRows] = await connection.query(
       "SELECT GET_LOCK(?, 0) AS acquired",
       [LOCK_NAME],
     );
     if (Number(lockRows?.[0]?.acquired) !== 1) {
+      await runHistory.finishRun(connection, runId, {
+        status: "SKIPPED",
+        completedAt: new Date(now()),
+        durationMs: Math.max(0, now() - startedAt),
+        errorMessage: "Another ingestion run was already active.",
+      });
       logger.info("[scheduled-ingestion] skipped category=already_running");
       return { status: "SKIPPED", category: "already_running" };
     }
@@ -96,6 +152,22 @@ async function runScheduledIngestion({
             ? "partial_article_failure"
             : articleErrorCategory
           : "none";
+    const partial = sourceFailures > 0 || articleFailures > 0;
+    await runHistory.finishRun(connection, runId, {
+      status: partial ? "PARTIAL" : "SUCCEEDED",
+      completedAt: new Date(now()),
+      durationMs: Math.max(0, now() - startedAt),
+      sources_checked: result.sourcesChecked,
+      articles_collected: result.articlesCollected,
+      articles_prefiltered: result.preFiltered,
+      articles_processed: result.articlesProcessed,
+      candidates_found: result.candidatesExtracted,
+      verified_count: result.verifiedCandidates,
+      rejected_count: result.candidatesRejected,
+      duplicate_count: result.duplicates,
+      inserted_count: result.insertedIncidents,
+      error_count: sourceFailures + articleFailures,
+    });
     logger.info(
       `[scheduled-ingestion] complete duration_ms=${durationMs} ` +
         `sources_checked=${Number(result.sourcesChecked || 0)} ` +
@@ -110,6 +182,19 @@ async function runScheduledIngestion({
     return { status: "COMPLETED", result };
   } catch (error) {
     const category = errorCategory(error);
+    if (runId !== undefined) {
+      try {
+        await runHistory.finishRun(connection, runId, {
+          status: "FAILED",
+          completedAt: new Date(now()),
+          durationMs: Math.max(0, now() - startedAt),
+          error_count: 1,
+          errorMessage: `Ingestion failed (${category}).`,
+        });
+      } catch {
+        logger.error("[scheduled-ingestion] failed category=history_update");
+      }
+    }
     logger.error(
       `[scheduled-ingestion] failed category=${category} ` +
         `duration_ms=${Math.max(0, now() - startedAt)}`,
@@ -130,6 +215,7 @@ async function runScheduledIngestion({
 module.exports = {
   LOCK_NAME,
   errorCategory,
+  runManualIngestion,
   runScheduledIngestion,
   validateIngestionEnvironment,
 };

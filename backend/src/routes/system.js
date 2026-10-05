@@ -1,7 +1,9 @@
 const express = require("express");
+const pool = require("../config/database");
 const {
   runAutomatedIngestion,
 } = require("../services/automatedIncidentPipeline");
+const { runManualIngestion } = require("../services/scheduledIngestionService");
 
 const router = express.Router();
 
@@ -42,8 +44,18 @@ router.post("/ingest", async (req, res, next) => {
   }
 
   try {
-    const result = await runAutomatedIngestion();
-    return res.json({ success: true, data: result });
+    const run = await runManualIngestion({
+      dbPool: pool,
+      runPipeline: runAutomatedIngestion,
+    });
+    if (run.status === "FAILED") {
+      return res.status(500).json({
+        success: false,
+        message: "Automated ingestion failed.",
+        data: { category: run.category },
+      });
+    }
+    return res.json({ success: true, data: run.result });
   } catch (error) {
     return next(error);
   }

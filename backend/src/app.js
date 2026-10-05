@@ -7,6 +7,7 @@ const incidentsRouter = require("./routes/incidents");
 const analyticsRouter = require("./routes/analytics");
 const routesRouter = require("./routes/routes");
 const systemRouter = require("./routes/system");
+const { createAdminRouter } = require("./routes/admin");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -17,6 +18,7 @@ const allowedOrigins = [
     .map((origin) => origin.trim())
     .filter(Boolean),
   process.env.FRONTEND_ORIGIN?.trim(),
+  process.env.ADMIN_FRONTEND_ORIGIN?.trim(),
 ].filter(Boolean);
 
 if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0) {
@@ -38,7 +40,11 @@ app.use(
         } catch {}
       }
 
-      if (!origin || allowedOrigins.includes(origin) || isDevelopmentLocalhost) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        isDevelopmentLocalhost
+      ) {
         return callback(null, true);
       }
       if (
@@ -59,6 +65,7 @@ app.use("/api/incidents", incidentsRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/routes", routesRouter);
 app.use("/api/system", systemRouter);
+app.use("/api/admin", createAdminRouter());
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Not Found" });

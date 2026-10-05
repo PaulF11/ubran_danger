@@ -34,9 +34,13 @@ function createLogger() {
 function createDatabasePool({ acquired = 1 } = {}) {
   const calls = [];
   let released = 0;
+  let insertedId = 0;
   const connection = {
     async query(sql, values) {
       calls.push({ sql, values });
+      if (sql.includes("INSERT INTO ingestion_runs")) {
+        return [{ insertId: ++insertedId }];
+      }
       return sql.includes("GET_LOCK") ? [[{ acquired }]] : [[{ released: 1 }]];
     },
     release() {
@@ -132,7 +136,7 @@ test("invalid site URL is rejected without making a network request", async () =
   assert.equal((await handler()).statusCode, 500);
 });
 
-test("invalid ingestion configuration fails before connecting to MySQL", async () => {
+test("invalid ingestion configuration is recorded before running the pipeline", async () => {
   for (const [overrides, error] of [
     [{ DB_PORT: "3306.5" }, /invalid_configuration:db_port/],
     [{ DB_HOST: "localhost" }, /invalid_configuration:local_db_host/],
@@ -140,32 +144,38 @@ test("invalid ingestion configuration fails before connecting to MySQL", async (
     const environment = { ...validEnvironment, ...overrides };
     assert.throws(() => validateIngestionEnvironment(environment), error);
     const logger = createLogger();
+    const pool = createDatabasePool();
     const result = await runScheduledIngestion({
       environment,
       logger,
-      dbPool: {
-        getConnection: async () =>
-          assert.fail("Must not connect with invalid config."),
-      },
+      dbPool: pool,
       runPipeline: async () => assert.fail("Must not run with invalid config."),
     });
     assert.deepEqual(result, { status: "FAILED", category: "configuration" });
+    assert.equal(
+      pool.calls.filter(({ sql }) => sql.includes("UPDATE ingestion_runs"))
+        .length,
+      1,
+    );
   }
 });
 
 test("missing required ingestion environment fails safely", async () => {
   const logger = createLogger();
+  const pool = createDatabasePool();
   const result = await runScheduledIngestion({
     environment: {},
     logger,
-    dbPool: {
-      getConnection: async () =>
-        assert.fail("Must not connect without config."),
-    },
+    dbPool: pool,
     runPipeline: async () => assert.fail("Must not run without config."),
   });
   assert.deepEqual(result, { status: "FAILED", category: "configuration" });
   assert.match(logger.entries.join("\n"), /failed category=configuration/);
+  assert.equal(
+    pool.calls.filter(({ sql }) => sql.includes("UPDATE ingestion_runs"))
+      .length,
+    1,
+  );
 });
 
 test("successful ingestion reports results and releases the MySQL lock", async () => {
@@ -197,8 +207,15 @@ test("successful ingestion reports results and releases the MySQL lock", async (
 
   assert.equal(result.status, "COMPLETED");
   assert.equal(pipelineCalls, 1);
-  assert.equal(pool.calls.length, 2);
-  assert.deepEqual(pool.calls[0].values, [LOCK_NAME]);
+  assert.equal(
+    pool.calls.filter(({ sql }) => sql.includes("UPDATE ingestion_runs"))
+      .length,
+    1,
+  );
+  assert.deepEqual(
+    pool.calls.find(({ sql }) => sql.includes("GET_LOCK")).values,
+    [LOCK_NAME],
+  );
   assert.equal(pool.released, 1);
   assert.match(logger.entries.join("\n"), /inserted=1/);
 });
