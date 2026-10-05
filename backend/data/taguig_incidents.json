@@ -1,0 +1,91 @@
+[
+  {
+    "category": "Assault",
+    "city": "Taguig City",
+    "barangay": "Tuktukan",
+    "locationDescription": "In front of Tuktukan Barangay Hall",
+    "latitude": 14.5288854,
+    "longitude": 121.0707909,
+    "locationSourceName": "OpenStreetMap Nominatim",
+    "locationSourceUrl": "https://www.openstreetmap.org/way/286220264",
+    "description": "A shooting occurred in front of the Tuktukan Barangay Hall. Police said two suspects were killed when an armed civilian fired back as they attempted to shoot a minor.",
+    "severity": "HIGH",
+    "severityFacts": {
+      "firearmUsed": true,
+      "deaths": 2,
+      "seriousInjury": false,
+      "physicalInjury": false,
+      "explicitThreat": false
+    },
+    "incidentDate": "2025-06-24T16:45:00",
+    "incidentTimeKnown": true,
+    "sourceName": "Manila Standard",
+    "sourceUrl": "https://manilastandard.net/lgu/314607491/3-dead-in-one-night-of-shooting-incidents-in-taguig-city.html",
+    "sourcePublishedAt": "2025-06-25",
+    "sourceEvidence": {
+      "sourceReviewed": true,
+      "city": "Taguig City",
+      "incidentDate": "2025-06-24",
+      "location": "The article identifies the area in front of the Barangay Tuktukan hall.",
+      "eventFacts": "The article reports a shooting involving four people and says two suspects died when an armed civilian returned fire as they attempted to shoot a minor."
+    }
+  },
+  {
+    "category": "Assault",
+    "city": "Taguig City",
+    "barangay": "Tuktukan",
+    "locationDescription": "Bagong Calzada Street, Barangay Tuktukan",
+    "latitude": null,
+    "longitude": null,
+    "description": "Hours after another shooting that evening, a separate shooting occurred on Bagong Calzada Street in Tuktukan; the article reports that a minor victim was shot dead and a suspect was later arrested.",
+    "severity": "HIGH",
+    "severityFacts": {
+      "firearmUsed": true,
+      "deaths": 1,
+      "seriousInjury": false,
+      "physicalInjury": false,
+      "explicitThreat": false
+    },
+    "incidentDate": "2025-06-24",
+    "incidentTimeKnown": false,
+    "sourceName": "Manila Standard",
+    "sourceUrl": "https://manilastandard.net/lgu/314607491/3-dead-in-one-night-of-shooting-incidents-in-taguig-city.html",
+    "sourcePublishedAt": "2025-06-25",
+    "sourceEvidence": {
+      "sourceReviewed": true,
+      "city": "Taguig City",
+      "incidentDate": "2025-06-24",
+      "location": "The article names Bagong Calzada Street, Barangay Tuktukan.",
+      "eventFacts": "The article distinguishes a later shooting at Bagong Calzada Street and reports a minor victim died."
+    }
+  },
+  {
+    "category": "Assault",
+    "city": "Taguig City",
+    "barangay": "Santa Ana",
+    "locationDescription": "Street in Barangay Santa Ana; street name not reported",
+    "latitude": null,
+    "longitude": null,
+    "description": "Two people, including a 13-year-old, were shot in Barangay Santa Ana on September 24, 2025. The article reports that both victims were seriously injured.",
+    "severity": "HIGH",
+    "severityFacts": {
+      "firearmUsed": true,
+      "deaths": 0,
+      "seriousInjury": true,
+      "physicalInjury": true,
+      "explicitThreat": false
+    },
+    "incidentDate": "2025-09-24",
+    "incidentTimeKnown": false,
+    "sourceName": "Manila Standard",
+    "sourceUrl": "https://manilastandard.net/news/crime-courts/314648598/taguig-police-arrest-two-shooting-suspects.html",
+    "sourcePublishedAt": "2025-09-28",
+    "sourceEvidence": {
+      "sourceReviewed": true,
+      "city": "Taguig City",
+      "incidentDate": "2025-09-24",
+      "location": "The article identifies Barangay Santa Ana and does not name the street.",
+      "eventFacts": "The article reports two victims, including a minor, were shot and seriously injured."
+    }
+  }
+]

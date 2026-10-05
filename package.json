@@ -1,0 +1,11 @@
+{
+  "name": "urban_danger_netlify",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/functions": "^3.1.10",
+    "serverless-http": "^3.2.0"
+  }
+}
