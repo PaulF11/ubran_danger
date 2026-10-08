@@ -15,9 +15,11 @@ const {
 const {
   isAllowedTrustedSource,
   collectTrustedSources,
-  parseTrustedSourceSeedUrls,
+  parseCollectionTargetUrls,
 } = require("../src/services/sourceCollectorService");
-const { runAutomatedIngestion } = require("../src/services/automatedIncidentPipeline");
+const {
+  runAutomatedIngestion,
+} = require("../src/services/automatedIncidentPipeline");
 const {
   isPlausibleIndividualIncident,
 } = require("../src/services/incidentPreFilterService");
@@ -25,6 +27,10 @@ const {
   insertVerifiedCandidate,
 } = require("../src/services/incidentPersistenceService");
 const curatedCandidates = require("../data/taguig_incidents.json");
+const emptyProcessedSources = {
+  findProcessed: async () => new Set(),
+  recordProcessed: async () => {},
+};
 
 function validCandidate(overrides = {}) {
   return {
@@ -280,45 +286,84 @@ test("untrusted source hosts are rejected", () => {
   );
 });
 
-test("trusted HTTPS seed URL is accepted", async () => {
+test("default collection targets are GMA News and News5 / TV5 only", async () => {
   await withEnvironment(
     {
-      TRUSTED_SOURCE_HOSTS: "newsinfo.inquirer.net",
-      TRUSTED_SOURCE_SEED_URLS:
-        "https://newsinfo.inquirer.net/taguig-news/",
+      TRUSTED_SOURCE_HOSTS: "taguig.gov.ph,pnp.gov.ph",
+      SOURCE_COLLECTION_TARGET_URLS: undefined,
     },
     async () => {
-      const seeds = parseTrustedSourceSeedUrls();
-      assert.equal(seeds.length, 1);
+      const targets = parseCollectionTargetUrls();
+      assert.deepEqual(
+        targets.map((url) => url.href),
+        [
+          "https://www.gmanetwork.com/news/",
+          "https://news.tv5.com.ph/articles",
+        ],
+      );
       assert.equal(
-        seeds[0].href,
-        "https://newsinfo.inquirer.net/taguig-news/",
+        isAllowedTrustedSource(new URL("https://taguig.gov.ph/article")),
+        true,
+      );
+      assert.equal(
+        isAllowedTrustedSource(new URL("https://pnp.gov.ph/article")),
+        true,
+      );
+      assert.equal(
+        isAllowedTrustedSource(new URL("https://news.tv5.com.ph/article")),
+        false,
       );
     },
   );
 });
 
-test("seed URLs from untrusted hosts are rejected", async () => {
+test("collector requests configured targets independently of verification hosts", async () => {
   await withEnvironment(
     {
-      TRUSTED_SOURCE_HOSTS: "newsinfo.inquirer.net",
-      TRUSTED_SOURCE_SEED_URLS: "https://example.com/taguig-news/",
+      TRUSTED_SOURCE_HOSTS: "taguig.gov.ph,pnp.gov.ph",
+      SOURCE_COLLECTION_TARGET_URLS:
+        "https://www.gmanetwork.com/news/,https://news.tv5.com.ph/articles",
     },
     async () => {
-      assert.throws(parseTrustedSourceSeedUrls, /TRUSTED_SOURCE_SEED_URLS/);
+      const requested = [];
+      const sources = await collectTrustedSources({
+        fetchImpl: async (url) => {
+          requested.push(url.toString());
+          return { ok: true, text: async () => "<html></html>" };
+        },
+      });
+      assert.deepEqual(requested, [
+        "https://www.gmanetwork.com/news/",
+        "https://news.tv5.com.ph/articles",
+      ]);
+      assert.equal(sources.sourcesChecked, 2);
     },
   );
 });
 
-test("HTTP seed URLs are rejected", async () => {
+test("collection target URLs do not inherit the trusted-host allowlist", async () => {
   await withEnvironment(
     {
       TRUSTED_SOURCE_HOSTS: "newsinfo.inquirer.net",
-      TRUSTED_SOURCE_SEED_URLS:
+      SOURCE_COLLECTION_TARGET_URLS: "https://example.com/taguig-news/",
+    },
+    async () => {
+      assert.equal(
+        parseCollectionTargetUrls()[0].href,
+        "https://example.com/taguig-news/",
+      );
+    },
+  );
+});
+
+test("HTTP collection target URLs are rejected", async () => {
+  await withEnvironment(
+    {
+      SOURCE_COLLECTION_TARGET_URLS:
         "http://newsinfo.inquirer.net/taguig-news/",
     },
     async () => {
-      assert.throws(parseTrustedSourceSeedUrls, /TRUSTED_SOURCE_SEED_URLS/);
+      assert.throws(parseCollectionTargetUrls, /SOURCE_COLLECTION_TARGET_URLS/);
     },
   );
 });
@@ -327,7 +372,7 @@ test("blocked seed is skipped while other configured seed sources continue", asy
   await withEnvironment(
     {
       TRUSTED_SOURCE_HOSTS: "blocked.example,available.example",
-      TRUSTED_SOURCE_SEED_URLS:
+      SOURCE_COLLECTION_TARGET_URLS:
         "https://blocked.example/news/,https://available.example/taguig/",
     },
     async () => {
@@ -356,12 +401,12 @@ test("blocked seed is skipped while other configured seed sources continue", asy
       assert.equal(calls[0].options.redirect, "error");
       assert.equal(calls[1].url, "https://available.example/taguig/");
       assert.equal(sources.length, 1);
-      assert.equal(
-        sources[0].url,
-        "https://available.example/article",
-      );
+      assert.equal(sources[0].url, "https://available.example/article");
       assert.equal(sources[0].sourceName, "available.example");
-      assert.equal(calls.some(({ url }) => url.includes("elsewhere.example")), false);
+      assert.equal(
+        calls.some(({ url }) => url.includes("elsewhere.example")),
+        false,
+      );
     },
   );
 });
@@ -370,7 +415,7 @@ test("successful seed pages count as checked even when they expose no article li
   await withEnvironment(
     {
       TRUSTED_SOURCE_HOSTS: "news.example",
-      TRUSTED_SOURCE_SEED_URLS: "https://news.example/news/",
+      SOURCE_COLLECTION_TARGET_URLS: "https://news.example/news/",
     },
     async () => {
       let fetchedUrl;
@@ -401,7 +446,7 @@ test("discovers GMA story links after navigation within the bounded seed HTML", 
   await withEnvironment(
     {
       TRUSTED_SOURCE_HOSTS: "www.gmanetwork.com",
-      TRUSTED_SOURCE_SEED_URLS: "https://www.gmanetwork.com/news/",
+      SOURCE_COLLECTION_TARGET_URLS: "https://www.gmanetwork.com/news/",
     },
     async () => {
       const requested = [];
@@ -426,10 +471,7 @@ test("discovers GMA story links after navigation within the bounded seed HTML", 
       });
 
       assert.equal(sources.length, 1);
-      assert.equal(
-        sources[0].url,
-        `https://www.gmanetwork.com${gmaStory}`,
-      );
+      assert.equal(sources[0].url, `https://www.gmanetwork.com${gmaStory}`);
       assert.deepEqual(requested, [
         "https://www.gmanetwork.com/news/",
         `https://www.gmanetwork.com${gmaStory}`,
@@ -442,7 +484,7 @@ test("discovers ABS-CBN Article URLs from its Next.js page data", async () => {
   await withEnvironment(
     {
       TRUSTED_SOURCE_HOSTS: "www.abs-cbn.com",
-      TRUSTED_SOURCE_SEED_URLS: "https://www.abs-cbn.com/news",
+      SOURCE_COLLECTION_TARGET_URLS: "https://www.abs-cbn.com/news",
     },
     async () => {
       const requested = [];
@@ -454,8 +496,7 @@ test("discovers ABS-CBN Article URLs from its Next.js page data", async () => {
                 {
                   profile: "Article",
                   title: "ABS-CBN article headline with sufficient length",
-                  slugline_url:
-                    "news/nation/2026/10/4/sample-article-123",
+                  slugline_url: "news/nation/2026/10/4/sample-article-123",
                 },
                 {
                   profile: "Section",
@@ -502,7 +543,7 @@ test("GMA article discovery rejects external-host links", async () => {
   await withEnvironment(
     {
       TRUSTED_SOURCE_HOSTS: "www.gmanetwork.com",
-      TRUSTED_SOURCE_SEED_URLS: "https://www.gmanetwork.com/news/",
+      SOURCE_COLLECTION_TARGET_URLS: "https://www.gmanetwork.com/news/",
     },
     async () => {
       const requested = [];
@@ -545,9 +586,7 @@ test("INQUIRER Newsinfo is trusted only when its exact host is allowlisted", () 
       false,
     );
     assert.equal(
-      isAllowedTrustedSource(
-        new URL("http://newsinfo.inquirer.net/article"),
-      ),
+      isAllowedTrustedSource(new URL("http://newsinfo.inquirer.net/article")),
       false,
     );
   } finally {
@@ -559,11 +598,11 @@ test("INQUIRER Newsinfo is trusted only when its exact host is allowlisted", () 
   }
 });
 
-test("INQUIRER collector follows only trusted same-host HTTPS article links", async () => {
+test("INQUIRER collector follows only same-host HTTPS article links", async () => {
   const originalHosts = process.env.TRUSTED_SOURCE_HOSTS;
-  const originalSeeds = process.env.TRUSTED_SOURCE_SEED_URLS;
+  const originalTargets = process.env.SOURCE_COLLECTION_TARGET_URLS;
   process.env.TRUSTED_SOURCE_HOSTS = "newsinfo.inquirer.net";
-  process.env.TRUSTED_SOURCE_SEED_URLS = "";
+  process.env.SOURCE_COLLECTION_TARGET_URLS = "https://newsinfo.inquirer.net/";
   const calls = [];
   const response = (body) => ({
     ok: true,
@@ -602,19 +641,19 @@ test("INQUIRER collector follows only trusted same-host HTTPS article links", as
     } else {
       process.env.TRUSTED_SOURCE_HOSTS = originalHosts;
     }
-    if (originalSeeds === undefined) {
-      delete process.env.TRUSTED_SOURCE_SEED_URLS;
+    if (originalTargets === undefined) {
+      delete process.env.SOURCE_COLLECTION_TARGET_URLS;
     } else {
-      process.env.TRUSTED_SOURCE_SEED_URLS = originalSeeds;
+      process.env.SOURCE_COLLECTION_TARGET_URLS = originalTargets;
     }
   }
 });
 
 test("collector extracts bounded same-host article text and metadata", async () => {
   const originalHosts = process.env.TRUSTED_SOURCE_HOSTS;
-  const originalSeeds = process.env.TRUSTED_SOURCE_SEED_URLS;
+  const originalTargets = process.env.SOURCE_COLLECTION_TARGET_URLS;
   process.env.TRUSTED_SOURCE_HOSTS = "trusted.example";
-  process.env.TRUSTED_SOURCE_SEED_URLS = "";
+  process.env.SOURCE_COLLECTION_TARGET_URLS = "https://trusted.example/";
   const calls = [];
   const response = (body) => ({
     ok: true,
@@ -634,10 +673,10 @@ test("collector extracts bounded same-host article text and metadata", async () 
     },
   });
   process.env.TRUSTED_SOURCE_HOSTS = originalHosts;
-  if (originalSeeds === undefined) {
-    delete process.env.TRUSTED_SOURCE_SEED_URLS;
+  if (originalTargets === undefined) {
+    delete process.env.SOURCE_COLLECTION_TARGET_URLS;
   } else {
-    process.env.TRUSTED_SOURCE_SEED_URLS = originalSeeds;
+    process.env.SOURCE_COLLECTION_TARGET_URLS = originalTargets;
   }
 
   assert.equal(calls.length, 2);
@@ -653,6 +692,7 @@ test("ingestion pipeline never persists failed verification and reports outcomes
   const candidate = validCandidate();
   let persisted = 0;
   const result = await runAutomatedIngestion({
+    processedSources: emptyProcessedSources,
     collector: async () => [
       {
         source: "trusted.example",
@@ -703,6 +743,7 @@ test("null extraction is recorded as not an incident without verification or per
   let verified = 0;
   let persisted = 0;
   const result = await runAutomatedIngestion({
+    processedSources: emptyProcessedSources,
     collector: async () => [
       {
         sourceName: "news.example",
@@ -761,6 +802,7 @@ test("pre-filtered general news is recorded and skips extraction, verification, 
     },
   ];
   const result = await runAutomatedIngestion({
+    processedSources: emptyProcessedSources,
     collector: async () =>
       obviousGeneralNews.map((article, index) => ({
         ...article,
@@ -823,8 +865,7 @@ test("non-Taguig article candidate is rejected by existing validation", async ()
 });
 
 test("sufficiently sourced Taguig article can pass extraction and verification without coordinates", async () => {
-  const articleUrl =
-    "https://newsinfo.inquirer.net/2026/10/04/taguig-report";
+  const articleUrl = "https://newsinfo.inquirer.net/2026/10/04/taguig-report";
   const candidate = validCandidate({
     sourceName: "newsinfo.inquirer.net",
     sourceUrl: articleUrl,
@@ -835,6 +876,7 @@ test("sufficiently sourced Taguig article can pass extraction and verification w
   let extractorReceivedArticle = false;
   let persisted = 0;
   const result = await runAutomatedIngestion({
+    processedSources: emptyProcessedSources,
     collector: async () => [
       {
         sourceName: "newsinfo.inquirer.net",
@@ -881,6 +923,7 @@ test("duplicate INQUIRER article candidate never reaches persistence twice", asy
   });
   let persisted = 0;
   const result = await runAutomatedIngestion({
+    processedSources: emptyProcessedSources,
     collector: async () => [
       {
         sourceName: "newsinfo.inquirer.net",
@@ -912,7 +955,9 @@ test("duplicate INQUIRER article candidate never reaches persistence twice", asy
   assert.equal(result.insertedIncidents, 1);
   assert.equal(result.results[0].status, "VERIFIED");
   assert.equal(result.results[1].verified, false);
-  assert.ok(result.results[1].reasons.some((reason) => /Duplicate/.test(reason)));
+  assert.ok(
+    result.results[1].reasons.some((reason) => /Duplicate/.test(reason)),
+  );
 });
 
 test("verified candidate insertion preserves NULL coordinates and never updates existing rows", async () => {
@@ -925,7 +970,8 @@ test("verified candidate insertion preserves NULL coordinates and never updates 
     async execute(sql) {
       statements.push(sql);
       if (sql.startsWith("SELECT incidents.id")) return [[]];
-      if (sql.startsWith("SELECT id FROM incident_categories")) return [[{ id: 2 }]];
+      if (sql.startsWith("SELECT id FROM incident_categories"))
+        return [[{ id: 2 }]];
       if (sql.startsWith("INSERT INTO incidents")) {
         return [{ insertId: 99 }];
       }
@@ -940,9 +986,18 @@ test("verified candidate insertion preserves NULL coordinates and never updates 
   });
 
   assert.deepEqual(result, { status: "INSERTED", inserted: true, id: 99 });
-  assert.equal(statements.some((sql) => sql.startsWith("UPDATE")), false);
-  assert.equal(statements.some((sql) => sql.startsWith("INSERT INTO locations")), false);
-  assert.equal(statements.filter((sql) => sql.startsWith("INSERT INTO incidents")).length, 1);
+  assert.equal(
+    statements.some((sql) => sql.startsWith("UPDATE")),
+    false,
+  );
+  assert.equal(
+    statements.some((sql) => sql.startsWith("INSERT INTO locations")),
+    false,
+  );
+  assert.equal(
+    statements.filter((sql) => sql.startsWith("INSERT INTO incidents")).length,
+    1,
+  );
 });
 
 test("existing duplicate is rejected before insertion", async () => {
@@ -955,17 +1010,21 @@ test("existing duplicate is rejected before insertion", async () => {
     async execute(sql) {
       statements.push(sql);
       if (sql.startsWith("SELECT incidents.id")) {
-        return [[{
-          category: "Assault",
-          city: "Taguig City",
-          barangay: "Santa Ana",
-          latitude: null,
-          longitude: null,
-          location_description: "Source-named area in Barangay Santa Ana",
-          incident_date: "2025-09-24",
-          severity: "HIGH",
-          source_url: "https://manilastandard.net/article/example",
-        }]];
+        return [
+          [
+            {
+              category: "Assault",
+              city: "Taguig City",
+              barangay: "Santa Ana",
+              latitude: null,
+              longitude: null,
+              location_description: "Source-named area in Barangay Santa Ana",
+              incident_date: "2025-09-24",
+              severity: "HIGH",
+              source_url: "https://manilastandard.net/article/example",
+            },
+          ],
+        ];
       }
       throw new Error("No insertion should be attempted.");
     },

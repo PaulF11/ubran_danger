@@ -1,3 +1,7 @@
+const DEFAULT_COLLECTION_TARGET_URLS = [
+  "https://www.gmanetwork.com/news/",
+  "https://news.tv5.com.ph/articles",
+];
 const DEFAULT_HOST_LIST = "taguig.gov.ph,pnp.gov.ph";
 const MAX_SOURCE_ARTICLES = 5;
 const MAX_RESPONSE_BYTES = 20000;
@@ -57,23 +61,28 @@ function isAllowedTrustedSource(url) {
   );
 }
 
-function parseTrustedSourceSeedUrls() {
-  const configured = (process.env.TRUSTED_SOURCE_SEED_URLS || "")
+function parseCollectionTargetUrls(
+  configured = process.env.SOURCE_COLLECTION_TARGET_URLS,
+) {
+  const values = (configured || DEFAULT_COLLECTION_TARGET_URLS.join(","))
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
-  return configured.map((value) => {
+  return values.map((value) => {
     let url;
     try {
       url = new URL(value);
     } catch {
-      throw new Error("TRUSTED_SOURCE_SEED_URLS contains an invalid URL.");
+      throw new Error("SOURCE_COLLECTION_TARGET_URLS contains an invalid URL.");
     }
 
-    if (!isAllowedTrustedSource(url)) {
+    if (
+      url.protocol !== "https:" ||
+      isPrivateOrLocalHostname(url.hostname.toLowerCase())
+    ) {
       throw new Error(
-        "Every TRUSTED_SOURCE_SEED_URLS entry must use HTTPS and a non-private host in TRUSTED_SOURCE_HOSTS.",
+        "Every SOURCE_COLLECTION_TARGET_URLS entry must use HTTPS and a non-private host.",
       );
     }
     return url;
@@ -113,8 +122,7 @@ function extractMetadata(html) {
         name.toLowerCase(),
       )
     ) {
-      publishedAt =
-        /content=["']([^"']+)["']/i.exec(tag)?.[1] || publishedAt;
+      publishedAt = /content=["']([^"']+)["']/i.exec(tag)?.[1] || publishedAt;
     }
   }
   return {
@@ -214,15 +222,7 @@ async function fetchSource(url, sourceName, fetchImpl) {
 }
 
 async function collectTrustedSources({ fetchImpl = fetch } = {}) {
-  const hosts = normalizeTrustedHosts();
-  const seeds = parseTrustedSourceSeedUrls();
-  const seededHosts = new Set(seeds.map((url) => url.hostname.toLowerCase()));
-  const startUrls = [
-    ...seeds,
-    ...hosts
-      .filter((host) => !seededHosts.has(host))
-      .map((host) => new URL(`https://${host}`)),
-  ];
+  const startUrls = parseCollectionTargetUrls();
   const collected = [];
   const collectedUrls = new Set();
   let sourcesChecked = 0;
@@ -230,7 +230,6 @@ async function collectTrustedSources({ fetchImpl = fetch } = {}) {
 
   for (const url of startUrls) {
     const host = url.hostname.toLowerCase();
-    if (!isAllowedTrustedSource(url)) continue;
 
     try {
       const response = await fetchImpl(url, {
@@ -280,7 +279,7 @@ module.exports = {
   isAllowedTrustedSource,
   isPrivateOrLocalHostname,
   normalizeTrustedHosts,
-  parseTrustedSourceSeedUrls,
+  parseCollectionTargetUrls,
   extractArticleLinks,
   htmlToText,
 };

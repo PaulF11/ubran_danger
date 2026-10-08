@@ -4,6 +4,7 @@ const http = require("node:http");
 const express = require("express");
 const { createAdminRouter } = require("../src/routes/admin");
 const { createAdminAuth } = require("../src/middleware/adminAuth");
+const { createAdminDataService } = require("../src/services/adminDataService");
 
 const testEnvironment = {
   ADMIN_USERNAME: "admin-test-user",
@@ -11,7 +12,8 @@ const testEnvironment = {
   ADMIN_TOKEN_SECRET: "test-only-token-signing-secret-32-characters-long",
   ADMIN_FRONTEND_ORIGIN: "https://admin.example.test",
   TRUSTED_SOURCE_HOSTS: "www.gmanetwork.com,www.abs-cbn.com",
-  TRUSTED_SOURCE_SEED_URLS: "https://www.gmanetwork.com/news/",
+  SOURCE_COLLECTION_TARGET_URLS:
+    "https://www.gmanetwork.com/news/,https://news.tv5.com.ph/articles",
   GEMINI_API_KEY: "test-only-provider-config-marker",
   URL: "https://urban-danger.example.test",
   INTERNAL_INGEST_KEY: "test-only-ingestion-config-marker",
@@ -111,6 +113,7 @@ async function withAdminServer(callback, options = {}) {
     createAdminRouter({
       database: options.database || createDatabase(),
       environment: options.environment || testEnvironment,
+      scanService: options.scanService,
     }),
   );
   const server = http.createServer(app);
@@ -177,6 +180,38 @@ test("admin API rejects unauthenticated requests and allows a signed session", a
   });
 });
 
+test("manual scan trigger requires admin authentication", async () => {
+  let starts = 0;
+  await withAdminServer(
+    async (baseUrl) => {
+      const denied = await fetch(`${baseUrl}/api/admin/run-scan`, {
+        method: "POST",
+      });
+      assert.equal(denied.status, 401);
+      assert.equal(starts, 0);
+
+      const token = await login(baseUrl);
+      const response = await fetch(`${baseUrl}/api/admin/run-scan`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+      assert.equal(response.status, 202);
+      assert.equal(payload.data.status, "RUNNING");
+      assert.equal(payload.data.afterRunId, 12);
+      assert.equal(starts, 1);
+    },
+    {
+      scanService: {
+        async start() {
+          starts += 1;
+          return { status: "RUNNING", afterRunId: 12 };
+        },
+      },
+    },
+  );
+});
+
 test("dashboard reports verified-only system statistics and latest run", async () => {
   await withAdminServer(async (baseUrl) => {
     const token = await login(baseUrl);
@@ -193,6 +228,38 @@ test("dashboard reports verified-only system statistics and latest run", async (
     assert.equal(payload.data.scheduler.status, "CONFIGURED");
     assert.match(payload.data.statisticsLabel, /not official crime rates/);
   });
+});
+
+test("dashboard safely handles a missing ingestion history table", async () => {
+  const database = createDatabase();
+  const databaseWithoutRunHistory = {
+    async execute(sql, parameters) {
+      if (sql.includes("FROM ingestion_runs")) {
+        const error = new Error("Missing ingestion history table");
+        error.code = "ER_NO_SUCH_TABLE";
+        throw error;
+      }
+      return database.execute(sql, parameters);
+    },
+  };
+
+  await withAdminServer(
+    async (baseUrl) => {
+      const token = await login(baseUrl);
+      const response = await fetch(`${baseUrl}/api/admin/dashboard`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+
+      assert.equal(response.status, 500);
+      assert.deepEqual(payload, {
+        success: false,
+        message: "Admin data is temporarily unavailable.",
+      });
+      assert.equal(JSON.stringify(payload).includes("ER_NO_SUCH_TABLE"), false);
+    },
+    { database: databaseWithoutRunHistory },
+  );
 });
 
 test("admin incident endpoints return only provenance-rich verified records", async () => {
@@ -232,6 +299,30 @@ test("ingestion history list and detail return persisted counters", async () => 
   });
 });
 
+test("ingestion history supports a parameterized MANUAL run cursor", async () => {
+  const queries = [];
+  const data = createAdminDataService({
+    database: {
+      async execute(sql, parameters) {
+        queries.push({ sql, parameters });
+        return sql.includes("COUNT(*)") ? [[{ total: 1 }]] : [[runRow]];
+      },
+    },
+  });
+
+  const result = await data.getIngestionRuns({
+    source: "MANUAL",
+    afterId: "11",
+    limit: "1",
+  });
+
+  assert.equal(result.items[0], runRow);
+  assert.equal(result.total, 1);
+  assert.match(queries[0].sql, /run_source = \? AND id > \?/);
+  assert.deepEqual(queries[0].parameters, ["MANUAL", "11", 1, 0]);
+  assert.deepEqual(queries[1].parameters, ["MANUAL", "11"]);
+});
+
 test("sources and system status expose configuration state without source stats or secrets", async () => {
   await withAdminServer(async (baseUrl) => {
     const token = await login(baseUrl);
@@ -245,6 +336,25 @@ test("sources and system status expose configuration state without source stats 
       statusResponse.json(),
     ]);
     assert.equal(sourcesPayload.data.length, 2);
+    assert.deepEqual(
+      sourcesPayload.data.map(({ name, domain, seedUrls }) => ({
+        name,
+        domain,
+        seedUrls,
+      })),
+      [
+        {
+          name: "GMA News",
+          domain: "www.gmanetwork.com",
+          seedUrls: ["https://www.gmanetwork.com/news/"],
+        },
+        {
+          name: "News5 / TV5",
+          domain: "news.tv5.com.ph",
+          seedUrls: ["https://news.tv5.com.ph/articles"],
+        },
+      ],
+    );
     assert.equal(sourcesPayload.data[0].activityAvailable, false);
     assert.equal(sourcesPayload.data[0].articlesCollected, null);
     assert.equal(statusPayload.data.api.status, "OPERATIONAL");
@@ -260,6 +370,64 @@ test("sources and system status expose configuration state without source stats 
       assert.equal(serialized.includes(secret), false);
     }
   });
+});
+
+test("production CORS allows the configured admin origin without wildcard access", async () => {
+  const names = [
+    "NODE_ENV",
+    "CORS_ORIGINS",
+    "FRONTEND_ORIGIN",
+    "ADMIN_FRONTEND_ORIGIN",
+  ];
+  const previous = Object.fromEntries(
+    names.map((name) => [name, process.env[name]]),
+  );
+  process.env.NODE_ENV = "production";
+  process.env.CORS_ORIGINS = "https://public.example.test";
+  process.env.FRONTEND_ORIGIN = "";
+  process.env.ADMIN_FRONTEND_ORIGIN = "https://admin.example.test";
+  const app = require("../src/app");
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  try {
+    const allowed = await fetch(
+      `http://127.0.0.1:${address.port}/api/admin/dashboard`,
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: process.env.ADMIN_FRONTEND_ORIGIN,
+          "Access-Control-Request-Method": "GET",
+          "Access-Control-Request-Headers": "authorization",
+        },
+      },
+    );
+    assert.equal(
+      allowed.headers.get("access-control-allow-origin"),
+      process.env.ADMIN_FRONTEND_ORIGIN,
+    );
+
+    const rejected = await fetch(
+      `http://127.0.0.1:${address.port}/api/admin/dashboard`,
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://unlisted.example.test",
+          "Access-Control-Request-Method": "GET",
+          "Access-Control-Request-Headers": "authorization",
+        },
+      },
+    );
+    assert.equal(rejected.headers.get("access-control-allow-origin"), null);
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
+  }
 });
 
 test("admin login rate limiter blocks repeated failures", () => {
