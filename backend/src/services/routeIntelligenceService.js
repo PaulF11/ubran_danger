@@ -5,6 +5,7 @@ const EARTH_RADIUS_METERS = 6371008.8;
 const DISTANCE_COMPARISON_EPSILON_METERS = 0.000001;
 const DEFAULT_PROXIMITY_METERS = 500;
 const MAX_CONFIGURED_PROXIMITY_METERS = 5000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const TAGUIG_BARANGAY_SET = new Set(
   TAGUIG_BARANGAYS.map((barangay) => barangay.toLowerCase()),
 );
@@ -67,7 +68,7 @@ function validateRouteGeometry(coordinates) {
   return points;
 }
 
-function distanceFromRouteMeters(latitude, longitude, routePoints) {
+function nearestRoutePosition(latitude, longitude, routePoints) {
   const incidentLatitude = (latitude * Math.PI) / 180;
   const longitudeScale = Math.cos(incidentLatitude);
   const project = (point) => ({
@@ -78,7 +79,9 @@ function distanceFromRouteMeters(latitude, longitude, routePoints) {
       ((point.latitude - latitude) * Math.PI * EARTH_RADIUS_METERS) / 180,
   });
   const origin = { x: 0, y: 0 };
-  let closest = Number.POSITIVE_INFINITY;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  let closestAlongRouteMeters = 0;
+  let traveledMeters = 0;
 
   for (let index = 0; index < routePoints.length - 1; index += 1) {
     const first = project(routePoints[index]);
@@ -98,17 +101,58 @@ function distanceFromRouteMeters(latitude, longitude, routePoints) {
                 segmentLengthSquared,
             ),
           );
+    const segmentLength = Math.sqrt(segmentLengthSquared);
     const nearestX = first.x + fraction * segmentX;
     const nearestY = first.y + fraction * segmentY;
-    closest = Math.min(closest, Math.hypot(nearestX, nearestY));
+    const distance = Math.hypot(nearestX, nearestY);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestAlongRouteMeters = traveledMeters + segmentLength * fraction;
+    }
+    traveledMeters += segmentLength;
   }
-  return closest;
+  return {
+    distanceMeters: closestDistance,
+    alongRouteMeters: closestAlongRouteMeters,
+    routeLengthMeters: traveledMeters,
+  };
+}
+
+function distanceFromRouteMeters(latitude, longitude, routePoints) {
+  return nearestRoutePosition(latitude, longitude, routePoints).distanceMeters;
+}
+
+function incidentRecencyWeight(incidentDate, now) {
+  if (!incidentDate) return 1;
+  const timestamp = new Date(incidentDate).getTime();
+  if (!Number.isFinite(timestamp)) return 1;
+  const ageDays = Math.max(0, (now - timestamp) / DAY_MS);
+  if (ageDays <= 30) return 1.5;
+  if (ageDays <= 365) return 1.25;
+  return 1;
+}
+
+function severityWeight(severity) {
+  switch (String(severity || "").toUpperCase()) {
+    case "HIGH":
+      return 3;
+    case "MEDIUM":
+      return 2;
+    case "LOW":
+      return 1;
+    default:
+      return 1;
+  }
 }
 
 function analyzeRouteSafety(
   coordinates,
   incidents,
-  { thresholdMeters = DEFAULT_PROXIMITY_METERS } = {},
+  {
+    thresholdMeters = DEFAULT_PROXIMITY_METERS,
+    routeDurationSeconds,
+    now = Date.now(),
+  } = {},
 ) {
   if (!Number.isFinite(thresholdMeters) || thresholdMeters <= 0) {
     throw new Error("invalid_configuration:route_proximity_threshold");
@@ -139,13 +183,13 @@ function analyzeRouteSafety(
 
   const nearbyIncidents = [];
   for (const { incident, latitude, longitude } of usableIncidents) {
-    const distanceMeters = distanceFromRouteMeters(
+    const routePosition = nearestRoutePosition(
       latitude,
       longitude,
       routePoints,
     );
     if (
-      distanceMeters <=
+      routePosition.distanceMeters <=
       thresholdMeters + DISTANCE_COMPARISON_EPSILON_METERS
     ) {
       nearbyIncidents.push({
@@ -155,7 +199,26 @@ function analyzeRouteSafety(
         barangay: incident.barangay || null,
         locationDescription: incident.location_description || null,
         incidentDate: incident.incident_date || null,
-        distanceMeters: Math.round(distanceMeters * 100) / 100,
+        distanceMeters: Math.round(routePosition.distanceMeters * 100) / 100,
+        sourceUrl: incident.source_url || null,
+        exposureWeight:
+          severityWeight(incident.severity) *
+          incidentRecencyWeight(incident.incident_date, now) *
+          Math.max(
+            0,
+            1 - routePosition.distanceMeters / thresholdMeters,
+          ),
+        ...(Number.isFinite(routeDurationSeconds) &&
+            routePosition.routeLengthMeters > 0
+          ? {
+              estimatedMinutesFromStart: Math.ceil(
+                (routePosition.alongRouteMeters /
+                  routePosition.routeLengthMeters) *
+                  routeDurationSeconds /
+                  60,
+              ),
+            }
+          : {}),
       });
     }
   }
@@ -190,6 +253,12 @@ function analyzeRouteSafety(
     VERIFIED_INCIDENTS_NEAR_ROUTE:
       "Verified incidents found near this route.",
   }[category];
+  const weightedExposureScore = Math.round(
+    nearbyIncidents.reduce(
+      (score, incident) => score + incident.exposureWeight,
+      0,
+    ) * 100,
+  ) / 100;
 
   return {
     category,
@@ -197,10 +266,97 @@ function analyzeRouteSafety(
     nearbyVerifiedIncidentCount: nearbyIncidents.length,
     severityCounts,
     incidents: nearbyIncidents,
+    weightedExposureScore,
     usableVerifiedIncidentCount: usableIncidents.length,
     proximityThresholdMeters: thresholdMeters,
     datasetLimited: true,
     basis: "Currently verified incidents in the system",
+  };
+}
+
+function recommendRoute(routes) {
+  if (!Array.isArray(routes) || routes.length < 2) {
+    return {
+      recommendedRouteIndex: null,
+      reason: "Only one route is available; there is no alternative to compare.",
+      methodology:
+        "Recommendations require at least two routes and comparable verified-incident data.",
+    };
+  }
+  if (
+    routes.some(
+      (route) =>
+        route.routeIntelligence.category === "UNAVAILABLE" ||
+        route.routeIntelligence.weightedExposureScore === null,
+    )
+  ) {
+    return {
+      recommendedRouteIndex: null,
+      reason:
+        "Verified incident comparison is unavailable for one or more routes.",
+      methodology:
+        "No route is recommended when verified incident data cannot be compared.",
+    };
+  }
+  if (
+    routes.every(
+      (route) =>
+        route.routeIntelligence.usableVerifiedIncidentCount === 0,
+    )
+  ) {
+    return {
+      recommendedRouteIndex: null,
+      reason:
+        "There are no geocoded verified incidents available to distinguish these routes.",
+      methodology:
+        "A route is suggested only when verified incident data supports a lower-exposure alternative.",
+    };
+  }
+
+  const baseline = routes[0];
+  const baselineScore = baseline.routeIntelligence.weightedExposureScore;
+  const candidates = routes
+    .map((route, index) => ({ route, index }))
+    .filter(({ route, index }) => {
+      if (index === 0) return false;
+      const candidateScore = route.routeIntelligence.weightedExposureScore;
+      const acceptableDistance =
+        route.distanceMeters <= baseline.distanceMeters * 1.2;
+      const acceptableDuration =
+        route.durationSeconds <= baseline.durationSeconds * 1.2;
+      return (
+        candidateScore < baselineScore &&
+        acceptableDistance &&
+        acceptableDuration
+      );
+    })
+    .sort(
+      (first, second) =>
+        first.route.routeIntelligence.weightedExposureScore -
+          second.route.routeIntelligence.weightedExposureScore ||
+        first.route.durationSeconds - second.route.durationSeconds ||
+        first.route.distanceMeters - second.route.distanceMeters,
+    );
+
+  if (candidates.length === 0) {
+    return {
+      recommendedRouteIndex: null,
+      reason:
+        "No alternative shows a lower verified-incident exposure without exceeding the route distance and ETA trade-off limits.",
+      methodology:
+        "Incident exposure weights proximity, system-assigned severity, and incident date. An alternative must have lower exposure and be no more than 20% longer in both distance and estimated duration.",
+    };
+  }
+  const { route, index } = candidates[0];
+  const nearbyCount = route.routeIntelligence.nearbyVerifiedIncidentCount;
+  const baselineCount = baseline.routeIntelligence.nearbyVerifiedIncidentCount;
+  return {
+    recommendedRouteIndex: index,
+    reason:
+      `Route ${index + 1} has a lower weighted verified-incident exposure ` +
+      `(${nearbyCount} nearby reports versus ${baselineCount} on Route 1).`,
+    methodology:
+      "Incident exposure weights route proximity, system-assigned severity, and incident date. The suggested alternative has lower exposure and is no more than 20% longer in both distance and estimated duration. ETA is an estimate, not live traffic.",
   };
 }
 
@@ -209,6 +365,7 @@ module.exports = {
   MAX_CONFIGURED_PROXIMITY_METERS,
   analyzeRouteSafety,
   distanceFromRouteMeters,
+  recommendRoute,
   proximityThresholdFromEnvironment,
   validateRouteGeometry,
 };

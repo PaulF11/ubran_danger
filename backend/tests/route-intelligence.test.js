@@ -4,6 +4,7 @@ const {
   DEFAULT_PROXIMITY_METERS,
   analyzeRouteSafety,
   proximityThresholdFromEnvironment,
+  recommendRoute,
   validateRouteGeometry,
 } = require("../src/services/routeIntelligenceService");
 const {
@@ -25,6 +26,7 @@ function incident(id, overrides = {}) {
     barangay: "Santa Ana",
     latitude: 14.5,
     longitude: 121.005,
+    source_url: "https://example.test/verified-report",
     severity: "LOW",
     incident_date: "2025-09-24",
     verification_status: "VERIFIED",
@@ -145,6 +147,86 @@ test("same incident is counted once even when its row is repeated", () => {
   assert.equal(result.severityCounts.HIGH, 1);
 });
 
+test("route exposure accounts for full-geometry proximity, severity, and recency", () => {
+  const result = analyzeRouteSafety(
+    route,
+    [
+      incident(1, {
+        severity: "HIGH",
+        incident_date: "2024-01-01",
+        latitude: 14.5,
+        longitude: 121.005,
+      }),
+      incident(2, {
+        severity: "LOW",
+        incident_date: "2026-10-10",
+        latitude: latitudeOffset(250),
+        longitude: 121.005,
+      }),
+    ],
+    { thresholdMeters: 500, now: Date.parse("2026-10-18T00:00:00Z") },
+  );
+  assert.equal(result.incidents.length, 2);
+  assert.equal(result.incidents[0].id, 1);
+  assert.equal(
+    result.incidents[0].sourceUrl,
+    "https://example.test/verified-report",
+  );
+  assert.ok(result.weightedExposureScore > 3);
+  assert.ok(result.weightedExposureScore < 4);
+});
+
+test("route recommendation is conservative and explains why or why not", () => {
+  const routes = [
+    {
+      distanceMeters: 1000,
+      durationSeconds: 600,
+      routeIntelligence: {
+        category: "VERIFIED_INCIDENTS_NEAR_ROUTE",
+        nearbyVerifiedIncidentCount: 3,
+        usableVerifiedIncidentCount: 8,
+        weightedExposureScore: 6,
+      },
+    },
+    {
+      distanceMeters: 1100,
+      durationSeconds: 650,
+      routeIntelligence: {
+        category: "VERIFIED_INCIDENTS_NEAR_ROUTE",
+        nearbyVerifiedIncidentCount: 1,
+        usableVerifiedIncidentCount: 8,
+        weightedExposureScore: 2,
+      },
+    },
+  ];
+  const recommendation = recommendRoute(routes);
+  assert.equal(recommendation.recommendedRouteIndex, 1);
+  assert.match(recommendation.reason, /lower weighted verified-incident exposure/);
+  assert.match(recommendation.methodology, /incident date/);
+  assert.match(recommendation.methodology, /ETA is an estimate/);
+
+  assert.equal(
+    recommendRoute([
+      routes[0],
+      { ...routes[1], distanceMeters: 1300 },
+    ]).recommendedRouteIndex,
+    null,
+  );
+  assert.equal(
+    recommendRoute([
+      routes[0],
+      {
+        ...routes[1],
+        routeIntelligence: {
+          ...routes[1].routeIntelligence,
+          category: "UNAVAILABLE",
+        },
+      },
+    ]).recommendedRouteIndex,
+    null,
+  );
+});
+
 test("multiple route segments, short geometry, and long geometry are handled", () => {
   const segmented = analyzeRouteSafety(
     [
@@ -182,8 +264,17 @@ test("incidents near route start, middle, and destination are all included", () 
     incident(1, { longitude: 121.0001 }),
     incident(2, { longitude: 121.005 }),
     incident(3, { longitude: 121.0099 }),
-  ]);
+  ], { routeDurationSeconds: 600 });
   assert.equal(result.nearbyVerifiedIncidentCount, 3);
+  assert.equal(result.incidents[0].estimatedMinutesFromStart, 1);
+  assert.ok(
+    result.incidents[0].estimatedMinutesFromStart <
+      result.incidents[1].estimatedMinutesFromStart,
+  );
+  assert.ok(
+    result.incidents[1].estimatedMinutesFromStart <
+      result.incidents[2].estimatedMinutesFromStart,
+  );
 });
 
 test("empty incident input and missing or malformed route geometry are handled", () => {
@@ -239,6 +330,7 @@ test("route database query filters verified, sourced Taguig reports and developm
   assert.match(ROUTE_INCIDENTS_QUERY, /last_verified_at IS NOT NULL/);
   assert.match(ROUTE_INCIDENTS_QUERY, /locations\.latitude IS NOT NULL/);
   assert.match(ROUTE_INCIDENTS_QUERY, /locations\.longitude IS NOT NULL/);
+  assert.match(ROUTE_INCIDENTS_QUERY, /incidents\.source_url/);
   assert.match(ROUTE_INCIDENTS_QUERY, /LOWER\(TRIM\(locations\.barangay\)\)/);
 
   const syntheticDevelopmentRow = incident(100, {
@@ -347,6 +439,7 @@ test("route response includes structured incident intelligence from database row
     getThreshold: () => 400,
     logger: createLogger(),
   });
+
   const response = responseRecorder();
   await controller(request(), response);
   queryRows = response.body.data.routeIntelligence;
@@ -355,7 +448,51 @@ test("route response includes structured incident intelligence from database row
   assert.equal(queryRows.severityCounts.HIGH, 1);
   assert.equal(queryRows.proximityThresholdMeters, 400);
   assert.equal(queryRows.incidents[0].id, 18);
+  assert.equal(
+    queryRows.incidents[0].sourceUrl,
+    "https://example.test/verified-report",
+  );
+  assert.equal(typeof queryRows.incidents[0].estimatedMinutesFromStart, "number");
   assert.equal(response.body.data.coordinates.length, 3);
+});
+
+test("route endpoint analyzes and returns alternative OSRM geometries", async () => {
+  const alternative = [
+    [121.0, 14.51],
+    [121.005, 14.51],
+    [121.01, 14.51],
+  ];
+  const controller = createRoutesController({
+    getRoutes: async () => [
+      {
+        coordinates: route,
+        distanceMeters: 1000,
+        durationSeconds: 600,
+      },
+      {
+        coordinates: alternative,
+        distanceMeters: 1100,
+        durationSeconds: 650,
+      },
+    ],
+    getIncidentRows: async () => [
+      incident(21, { latitude: 14.5, longitude: 121.005, severity: "HIGH" }),
+    ],
+    logger: createLogger(),
+  });
+  const response = responseRecorder();
+  await controller(request(), response);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.data.coordinates.length, route.length);
+  assert.equal(response.body.data.alternatives.length, 1);
+  assert.equal(response.body.data.alternatives[0].coordinates.length, 3);
+  assert.equal(response.body.data.recommendation.recommendedRouteIndex, 1);
+  assert.equal(
+    response.body.data.alternatives[0].routeIntelligence
+      .nearbyVerifiedIncidentCount,
+    0,
+  );
 });
 
 test("route endpoint detects the known Tuktukan incident near OSRM geometry", async () => {

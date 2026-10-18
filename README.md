@@ -55,6 +55,41 @@ details, not an official crime score or a claim about whether a route is safe.
 The UI identifies the evidence as the currently verified, limited system
 dataset.
 
+OSRM is asked for alternative routes when available. Each route's complete
+geometry is analyzed against the same verified, geocoded Taguig incidents and
+reported with its distance, estimated duration, and nearby incident details.
+The recommendation compares proximity-weighted, severity-weighted exposure
+with incident recency. It suggests an alternative only when that exposure is
+lower and both its distance and estimated duration are no more than 20% above
+OSRM's first route. Missing incident data or no meaningful alternative yields
+no recommendation. Estimated durations are not live-traffic estimates.
+
+## Foreground location and nearby alerts
+
+The map can request foreground-only location access to show the current
+position, use it as a route start, and compare it locally with the already
+loaded verified incidents. Location is not sent to the backend, persisted, or
+tracked in the background. The location and alert controls are independent;
+alerts check for verified, geocoded Taguig incidents within **200 meters**.
+Repeated updates are deduplicated in memory by incident ID, with a 50-meter
+exit buffer and a 30-minute cooldown. Alert state is not persisted across app
+restarts. Local notifications are available on Android and iOS; tapping one
+opens its source link when present. Location and nearby alerts run only while
+the map is open and the app is foregrounded; the location stream is canceled
+when the app leaves the foreground. Manual map exploration and tapped-point
+route analysis remain available without location permission.
+
+Android declares coarse/fine foreground location and notification permissions.
+iOS requests When-In-Use location permission. Flutter Web uses the browser
+Geolocation and Notifications APIs and requires HTTPS, notification support,
+and explicit browser permission; notification permission is requested from the
+nearby-alert control before the location permission flow. Browser notifications
+also require service-worker support. No background location permission or mode
+is enabled. To change the nearby alert radius, build with
+`--dart-define=NEARBY_ALERT_RADIUS_METERS=200` (the default is 200). The
+backend route proximity warning remains configurable with
+`ROUTE_INCIDENT_PROXIMITY_METERS` (default 500; maximum 5,000).
+
 ## Local validation
 
 From `backend`, run `npm test`. This suite does not call external providers.

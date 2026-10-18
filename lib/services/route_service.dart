@@ -11,15 +11,21 @@ class RouteService {
   RouteService({http.Client? client, Uri? baseUri})
     : _client = client ?? http.Client(),
       _ownsClient = client == null,
-      _endpoint = (baseUri ?? ApiConfig.baseUri).resolve(
-        '/api/routes/route',
-      );
+      _endpoint = (baseUri ?? ApiConfig.baseUri).resolve('/api/routes/route');
 
   final http.Client _client;
   final bool _ownsClient;
   final Uri _endpoint;
 
   Future<RoutePlan> fetchRoute({
+    required LatLng start,
+    required LatLng destination,
+  }) async {
+    final analysis = await fetchRoutes(start: start, destination: destination);
+    return analysis.routes.first;
+  }
+
+  Future<RouteAnalysis> fetchRoutes({
     required LatLng start,
     required LatLng destination,
   }) async {
@@ -73,7 +79,7 @@ class RouteService {
       throw const RouteException('The server returned an invalid route.');
     }
     try {
-      return RoutePlan.fromJson(data);
+      return RouteAnalysis.fromJson(data);
     } on Object {
       throw const RouteException('The server returned invalid route geometry.');
     }

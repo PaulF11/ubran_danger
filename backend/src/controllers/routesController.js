@@ -3,6 +3,7 @@ const routingService = require("../services/osrmRoutingService");
 const {
   analyzeRouteSafety,
   proximityThresholdFromEnvironment,
+  recommendRoute,
   validateRouteGeometry,
 } = require("../services/routeIntelligenceService");
 const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
@@ -21,7 +22,8 @@ const ROUTE_INCIDENTS_QUERY = `SELECT
     locations.longitude,
     incidents.location_description,
     incidents.severity,
-    DATE_FORMAT(incidents.incident_date, '%Y-%m-%d') AS incident_date
+    DATE_FORMAT(incidents.incident_date, '%Y-%m-%d') AS incident_date,
+    incidents.source_url
   FROM incidents
   JOIN incident_categories
     ON incidents.category_id = incident_categories.id
@@ -45,6 +47,7 @@ function unavailableIntelligence() {
     nearbyVerifiedIncidentCount: null,
     severityCounts: null,
     incidents: [],
+    weightedExposureScore: null,
     usableVerifiedIncidentCount: null,
     proximityThresholdMeters: null,
     datasetLimited: true,
@@ -54,6 +57,7 @@ function unavailableIntelligence() {
 
 function createRoutesController({
   getRoute = routingService.getRoute,
+  getRoutes,
   getIncidentRows = async () => {
     const [rows] = await pool.query(
       ROUTE_INCIDENTS_QUERY,
@@ -64,6 +68,11 @@ function createRoutesController({
   getThreshold = () => proximityThresholdFromEnvironment(),
   logger = console,
 } = {}) {
+  const fetchRoutes =
+    getRoutes ||
+    (getRoute === routingService.getRoute
+      ? routingService.getRoutes
+      : async (start, destination) => [await getRoute(start, destination)]);
   return async (req, res) => {
     const { start, destination } = req.body || {};
     const validCoordinate = (point) =>
@@ -80,19 +89,44 @@ function createRoutesController({
       });
     }
 
-    let route;
-    let routePoints;
+    let routes;
     try {
-      route = await getRoute(start, destination);
-      if (
-        !Number.isFinite(route?.distanceMeters) ||
-        route.distanceMeters < 0 ||
-        !Number.isFinite(route?.durationSeconds) ||
-        route.durationSeconds < 0
-      ) {
-        throw new Error("invalid_route_metrics");
+      const receivedRoutes = await fetchRoutes(start, destination);
+      if (!Array.isArray(receivedRoutes) || receivedRoutes.length === 0) {
+        throw new Error("no_routes");
       }
-      routePoints = validateRouteGeometry(route?.coordinates);
+      const normalizeRoute = (route) => {
+        if (
+          !Number.isFinite(route?.distanceMeters) ||
+          route.distanceMeters < 0 ||
+          !Number.isFinite(route?.durationSeconds) ||
+          route.durationSeconds < 0
+        ) {
+          throw new Error("invalid_route_metrics");
+        }
+        const points = validateRouteGeometry(route?.coordinates);
+        return {
+          ...route,
+          coordinates: points.map((point) => [
+            point.longitude,
+            point.latitude,
+          ]),
+        };
+      };
+      routes = [normalizeRoute(receivedRoutes[0])];
+      for (const alternative of receivedRoutes.slice(1)) {
+        try {
+          routes.push(normalizeRoute(alternative));
+        } catch (error) {
+          logger.warn(
+            `[route-analysis] alternative_skipped category=${
+              error?.message === "route_out_of_scope"
+                ? "out_of_scope"
+                : "invalid_alternative"
+            }`,
+          );
+        }
+      }
     } catch (error) {
       if (error?.message === "route_out_of_scope") {
         return res.status(400).json({
@@ -107,29 +141,48 @@ function createRoutesController({
       });
     }
 
-    let routeIntelligence;
+    let routeIntelligences;
+    let recommendation;
     try {
       const incidents = await getIncidentRows();
-      routeIntelligence = analyzeRouteSafety(route.coordinates, incidents, {
-        thresholdMeters: getThreshold(),
-      });
+      const thresholdMeters = getThreshold();
+      routeIntelligences = routes.map((route) =>
+        analyzeRouteSafety(route.coordinates, incidents, {
+          thresholdMeters,
+          routeDurationSeconds: route.durationSeconds,
+        }),
+      );
+      recommendation = recommendRoute(
+        routes.map((route, index) => ({
+          ...route,
+          routeIntelligence: routeIntelligences[index],
+        })),
+      );
     } catch (error) {
       const category = /configuration/i.test(error?.message || "")
         ? "invalid_configuration"
         : "incident_data_unavailable";
       logger.error(`[route-analysis] failed category=${category}`);
-      routeIntelligence = unavailableIntelligence();
+      routeIntelligences = routes.map(() => unavailableIntelligence());
+      recommendation = {
+        recommendedRouteIndex: null,
+        reason: "Verified incident comparison is unavailable.",
+        methodology:
+          "No route is recommended when verified incident data cannot be compared.",
+      };
     }
 
+    const dataRoutes = routes.map((route, index) => ({
+      ...route,
+      routeIntelligence: routeIntelligences[index],
+    }));
+    const primaryRoute = dataRoutes[0];
     return res.json({
       success: true,
       data: {
-        ...route,
-        coordinates: routePoints.map((point) => [
-          point.longitude,
-          point.latitude,
-        ]),
-        routeIntelligence,
+        ...primaryRoute,
+        alternatives: dataRoutes.slice(1),
+        recommendation,
       },
     });
   };
