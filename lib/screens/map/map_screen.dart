@@ -503,7 +503,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               if (_locationMessage!.contains('Settings'))
                 TextButton(
                   onPressed: _openLocationSettings,
-                  child: const Text('Settings'),
+                  child: Text(kIsWeb ? 'How to enable' : 'Settings'),
                 ),
               IconButton(
                 tooltip: 'Dismiss location message',
@@ -565,12 +565,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       }
       if (access != LocationAccess.granted) {
         final message = switch (access) {
-          LocationAccess.denied =>
-            'Location permission was denied. Manual map and route features remain available.',
-          LocationAccess.permanentlyDenied =>
-            'Location permission is permanently denied. Open app Settings to enable it.',
-          LocationAccess.servicesDisabled =>
-            'Location services are off. Open device Settings to enable GPS.',
+          LocationAccess.denied => kIsWeb
+              ? 'Browser location permission was denied. Allow location for this site in browser Settings to retry. Manual map and route features remain available.'
+              : 'Location permission was denied. Manual map and route features remain available.',
+          LocationAccess.permanentlyDenied => kIsWeb
+              ? 'Browser location permission is blocked. Allow location for this site in browser Settings to retry. Manual map and route features remain available.'
+              : 'Location permission is permanently denied. Open app Settings to enable it.',
+          LocationAccess.servicesDisabled => kIsWeb
+              ? 'Browser location services are unavailable. Check browser Settings; manual map and route features remain available.'
+              : 'Location services are off. Open device Settings to enable GPS.',
           LocationAccess.granted => '',
         };
         setState(() => _locationMessage = message);
@@ -665,7 +668,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           if (mounted) {
             setState(
               () => _locationMessage =
-                  'Browser notifications are unavailable or denied. Nearby alerts remain off.',
+                  'Browser notifications are unavailable or denied. If blocked, allow notifications for this site in browser Settings. Nearby alerts remain off.',
             );
           }
           return;
@@ -787,6 +790,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openLocationSettings() async {
+    if (kIsWeb) {
+      setState(
+        () => _locationMessage =
+            "Use this site's browser Settings to allow location or notifications, then retry. Manual map and route features remain available.",
+      );
+      return;
+    }
     try {
       final opened = _locationMessage?.contains('GPS') == true
           ? await _locationService.openLocationSettings()
