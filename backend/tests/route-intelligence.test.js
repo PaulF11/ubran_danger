@@ -147,6 +147,25 @@ test("same incident is counted once even when its row is repeated", () => {
   assert.equal(result.severityCounts.HIGH, 1);
 });
 
+test("Pateros verified incidents participate without requiring a Taguig barangay", () => {
+  const paternityRoute = [
+    [121.02, 14.52],
+    [121.03, 14.52],
+  ];
+  const result = analyzeRouteSafety(paternityRoute, [
+    incident(8, {
+      city: "Pateros",
+      barangay: "Aplaya",
+      latitude: 14.52,
+      longitude: 121.025,
+      source_url: "https://example.test/pateros-report",
+    }),
+  ]);
+  assert.equal(result.nearbyVerifiedIncidentCount, 1);
+  assert.equal(result.incidents[0].sourceUrl, "https://example.test/pateros-report");
+  assert.equal(result.usableVerifiedIncidentCount, 1);
+});
+
 test("route exposure accounts for full-geometry proximity, severity, and recency", () => {
   const result = analyzeRouteSafety(
     route,
@@ -323,7 +342,7 @@ test("proximity threshold is configurable, bounded, and has a documented default
 test("route database query filters verified, sourced Taguig reports and development fixtures", () => {
   assert.match(ROUTE_INCIDENTS_QUERY, /incidents\.verification_status,/);
   assert.match(ROUTE_INCIDENTS_QUERY, /verification_status = 'VERIFIED'/);
-  assert.match(ROUTE_INCIDENTS_QUERY, /city = 'Taguig City'/);
+  assert.match(ROUTE_INCIDENTS_QUERY, /city IN \('Taguig City', 'Pateros'\)/);
   assert.match(ROUTE_INCIDENTS_QUERY, /source_name IS NOT NULL/);
   assert.match(ROUTE_INCIDENTS_QUERY, /source_url IS NOT NULL/);
   assert.match(ROUTE_INCIDENTS_QUERY, /verification_method IS NOT NULL/);
@@ -382,6 +401,77 @@ test("destination outside Taguig is rejected before requesting OSRM", async () =
   const response = responseRecorder();
   await controller(req, response);
   assert.equal(response.statusCode, 400);
+});
+
+test("route endpoint forwards supported travel modes and reports ETA provenance", async () => {
+  const controller = createRoutesController({
+    getRoutes: async (_start, _destination) => {
+      return [{ coordinates: route, distanceMeters: 1000, durationSeconds: 600 }];
+    },
+    getIncidentRows: async () => [],
+    logger: createLogger(),
+  });
+  for (const mode of ["car", "motorcycle", "walking", "bicycle", "truck"]) {
+    const req = request();
+    req.body.mode = mode;
+    const response = responseRecorder();
+    await controller(req, response);
+
+    assert.equal(response.statusCode, 200, mode);
+    assert.equal(response.body.data.routeMode, mode);
+    assert.equal(
+      response.body.data.durationSource,
+      ["motorcycle", "truck"].includes(mode) ? "estimated" : "provider",
+    );
+    assert.match(response.body.data.etaDescription, /duration|estimated/i);
+  }
+});
+
+test("route endpoint rejects unknown modes without calling the provider", async () => {
+  let routingCalls = 0;
+  const controller = createRoutesController({
+    getRoutes: async () => {
+      routingCalls += 1;
+      return [];
+    },
+    logger: createLogger(),
+  });
+  const req = request();
+  req.body.mode = "helicopter";
+  const response = responseRecorder();
+
+  await controller(req, response);
+
+  assert.equal(response.statusCode, 400);
+  assert.match(response.body.message, /not supported/);
+  assert.equal(routingCalls, 0);
+});
+
+test("invalid route-mode configuration returns an explicit service error", async () => {
+  const logger = createLogger();
+  const controller = createRoutesController({
+    getRouteProfileInfo: () => {
+      const error = new Error(
+        "invalid_configuration:ROUTE_TRUCK_ESTIMATED_SPEED_KMH",
+      );
+      error.code = "INVALID_ROUTE_CONFIGURATION";
+      throw error;
+    },
+    getRoutes: async () => assert.fail("Misconfigured routes must not run."),
+    logger,
+  });
+  const req = request();
+  req.body.mode = "truck";
+  const response = responseRecorder();
+
+  await controller(req, response);
+
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.body.success, false);
+  assert.match(response.body.message, /temporarily misconfigured/);
+  assert.deepEqual(logger.entries, [
+    "[route-analysis] failed category=invalid_configuration",
+  ]);
 });
 
 test("OSRM failure remains an explicit route error", async () => {

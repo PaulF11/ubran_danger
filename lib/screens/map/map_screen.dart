@@ -13,6 +13,7 @@ import '../../models/route_plan.dart';
 import '../../core/taguig_region.dart';
 import '../../services/incident_service.dart';
 import '../../services/location_service.dart';
+import '../../services/location_search_service.dart';
 import '../../services/nearby_incident_alert_tracker.dart';
 import '../../services/nearby_notification_service.dart';
 import '../../services/route_service.dart';
@@ -21,7 +22,16 @@ import 'map_filter_sheet.dart';
 import 'route_safety_summary.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({
+    super.key,
+    this.incidentService,
+    this.routeService,
+    this.locationSearchService,
+  });
+
+  final IncidentService? incidentService;
+  final RouteService? routeService;
+  final LocationSearchService? locationSearchService;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -31,8 +41,11 @@ enum _MapMode { incidents, route }
 
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   final MapController _mapController = MapController();
-  final IncidentService _incidentService = IncidentService();
-  final RouteService _routeService = RouteService();
+  late final IncidentService _incidentService =
+      widget.incidentService ?? IncidentService();
+  late final RouteService _routeService = widget.routeService ?? RouteService();
+  late final LocationSearchService _locationSearchService =
+      widget.locationSearchService ?? LocationSearchService();
   final LocationService _locationService = LocationService();
   final NearbyNotificationService _notificationService =
       NearbyNotificationService();
@@ -53,10 +66,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   _MapMode _mode = _MapMode.incidents;
   LatLng? _routeStart;
   LatLng? _routeDestination;
+  String _routeTravelMode = 'car';
   List<RoutePlan> _routePlans = const [];
   int _selectedRouteIndex = 0;
   bool _routeLoading = false;
   String? _routeError;
+  int _routeRequestGeneration = 0;
   StreamSubscription<Position>? _locationSubscription;
   Position? _currentPosition;
   bool _locationTracking = false;
@@ -162,7 +177,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _errorMessage = null;
     });
     try {
-      final incidents = await _incidentService.fetchIncidents();
+      final incidents = await _incidentService.fetchIncidents(
+        view: IncidentFeedView.all,
+      );
       if (!mounted) return;
       setState(() {
         _incidents = incidents;
@@ -177,7 +194,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       setState(() {
         _errorMessage = error is IncidentApiException
             ? error.message
-            : 'Unable to load Taguig incidents. Check your connection and retry.';
+            : 'Unable to load Taguig City and Pateros incidents. Check your connection and retry.';
         _isLoading = false;
       });
     }
@@ -190,6 +207,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _searchController.dispose();
     _incidentService.close();
     _routeService.close();
+    _locationSearchService.close();
     _mapController.dispose();
     super.dispose();
   }
@@ -236,19 +254,39 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     .toList(growable: false),
               ),
             MarkerLayer(markers: _buildMarkers(context)),
-            const SimpleAttributionWidget(
-              source: Text('OpenStreetMap contributors'),
-              alignment: Alignment.bottomLeft,
-              backgroundColor: Color(0xEFFFFFFF),
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: SafeArea(
+                top: false,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width - 20,
+                  ),
+                  child: Material(
+                    color: const Color(0xEFFFFFFF),
+                    borderRadius: BorderRadius.zero,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Text(
+                        '© OpenStreetMap contributors',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.black87, fontSize: 11),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
+        if (_isLoading) _buildLoadingIndicator(context),
         _buildTopControls(context),
         if (_tileError) _buildTileError(context),
         if (!_isLoading && _errorMessage != null) _buildApiError(context),
         if (!_isLoading && _errorMessage == null && _visibleIncidents.isEmpty)
           _buildEmptyResults(context),
-        if (_isLoading) _buildLoadingIndicator(context),
         if (_mode == _MapMode.route) _buildRouteControls(context),
         if (_locationMessage != null) _buildLocationMessage(context),
         if (_mode == _MapMode.incidents && _showDensity)
@@ -268,6 +306,66 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _filters.barangay,
       _filters.dateRange,
     ].where((value) => value != null).length;
+    final searchField = TextField(
+      controller: _searchController,
+      onChanged: (value) => setState(() => _query = value),
+      textInputAction: TextInputAction.search,
+      maxLines: 1,
+      decoration: InputDecoration(
+        hintText: 'Search Taguig City and Pateros incidents',
+        prefixIcon: const Icon(Icons.search),
+        border: InputBorder.none,
+        isDense: true,
+        suffixIcon: _query.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear search',
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _query = '');
+                },
+                icon: const Icon(Icons.close),
+              ),
+      ),
+    );
+    final actionButtons = [
+      IconButton(
+        tooltip: filterCount == 0
+            ? 'Filter incidents'
+            : 'Filters active: $filterCount',
+        onPressed: _openFilters,
+        icon: Badge(
+          isLabelVisible: filterCount > 0,
+          label: Text('$filterCount'),
+          child: const Icon(Icons.tune),
+        ),
+      ),
+      IconButton(
+        tooltip: _showDensity
+            ? 'Hide incident density'
+            : 'Show incident density',
+        onPressed: () => setState(() => _showDensity = !_showDensity),
+        color: _showDensity ? theme.colorScheme.primary : null,
+        icon: const Icon(Icons.blur_on_outlined),
+      ),
+      IconButton(
+        tooltip: _locationTracking && _currentPosition != null
+            ? 'Center on current location'
+            : 'Return to Taguig view',
+        onPressed: () {
+          final position = _currentPosition;
+          if (_locationTracking && position != null) {
+            _mapController.move(
+              LatLng(position.latitude, position.longitude),
+              15,
+            );
+          } else {
+            _mapController.move(taguigMapCenter, taguigMapInitialZoom);
+          }
+        },
+        icon: const Icon(Icons.my_location_outlined),
+      ),
+    ];
     return Positioned(
       top: 10,
       left: 10,
@@ -278,7 +376,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           elevation: 6,
           color: theme.colorScheme.surface.withValues(alpha: 0.96),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.zero,
             side: BorderSide(
               color: theme.colorScheme.outline.withValues(alpha: 0.8),
             ),
@@ -287,72 +385,26 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) => setState(() => _query = value),
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          hintText: 'Search Taguig incidents',
-                          prefixIcon: const Icon(Icons.search),
-                          border: InputBorder.none,
-                          isDense: true,
-                          suffixIcon: _query.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Clear search',
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _query = '');
-                                  },
-                                  icon: const Icon(Icons.close),
-                                ),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: filterCount == 0
-                          ? 'Filter incidents'
-                          : 'Filters active: $filterCount',
-                      onPressed: _openFilters,
-                      icon: Badge(
-                        isLabelVisible: filterCount > 0,
-                        label: Text('$filterCount'),
-                        child: const Icon(Icons.tune),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: _showDensity
-                          ? 'Hide incident density'
-                          : 'Show incident density',
-                      onPressed: () =>
-                          setState(() => _showDensity = !_showDensity),
-                      color: _showDensity ? theme.colorScheme.primary : null,
-                      icon: const Icon(Icons.blur_on_outlined),
-                    ),
-                    IconButton(
-                      tooltip: _locationTracking && _currentPosition != null
-                          ? 'Center on current location'
-                          : 'Return to Taguig view',
-                      onPressed: () {
-                        final position = _currentPosition;
-                        if (_locationTracking && position != null) {
-                          _mapController.move(
-                            LatLng(position.latitude, position.longitude),
-                            15,
-                          );
-                        } else {
-                          _mapController.move(
-                            taguigMapCenter,
-                            taguigMapInitialZoom,
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.my_location_outlined),
-                    ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth < 520) {
+                      return Column(
+                        children: [
+                          searchField,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: actionButtons,
+                          ),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: searchField),
+                        ...actionButtons,
+                      ],
+                    );
+                  },
                 ),
                 const Divider(height: 1),
                 Padding(
@@ -491,7 +543,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       top: false,
       child: Material(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
         elevation: 4,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -524,7 +576,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         title: Text(forAlerts ? 'Enable nearby alerts?' : 'Use your location?'),
         content: Text(
           forAlerts
-              ? 'While this map is open, Urban Danger checks your current location against verified Taguig incidents to alert you nearby. Location is not stored or tracked in the background. Notification permission is requested separately; browser alerts require a supported browser and permission.'
+              ? 'While this map is open, Urban Danger checks your current location against verified Taguig City and Pateros incidents to alert you nearby. Location is not stored or tracked in the background. Notification permission is requested separately; browser alerts require a supported browser and permission.'
               : 'While this map is open, Urban Danger uses your location to show your position, help set a route start, and compare nearby verified incidents. Location is not stored or tracked in the background.',
         ),
         actions: [
@@ -565,15 +617,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       }
       if (access != LocationAccess.granted) {
         final message = switch (access) {
-          LocationAccess.denied => kIsWeb
-              ? 'Browser location permission was denied. Allow location for this site in browser Settings to retry. Manual map and route features remain available.'
-              : 'Location permission was denied. Manual map and route features remain available.',
-          LocationAccess.permanentlyDenied => kIsWeb
-              ? 'Browser location permission is blocked. Allow location for this site in browser Settings to retry. Manual map and route features remain available.'
-              : 'Location permission is permanently denied. Open app Settings to enable it.',
-          LocationAccess.servicesDisabled => kIsWeb
-              ? 'Browser location services are unavailable. Check browser Settings; manual map and route features remain available.'
-              : 'Location services are off. Open device Settings to enable GPS.',
+          LocationAccess.denied =>
+            kIsWeb
+                ? 'Browser location permission was denied. Allow location for this site in browser Settings to retry. Manual map and route features remain available.'
+                : 'Location permission was denied. Manual map and route features remain available.',
+          LocationAccess.permanentlyDenied =>
+            kIsWeb
+                ? 'Browser location permission is blocked. Allow location for this site in browser Settings to retry. Manual map and route features remain available.'
+                : 'Location permission is permanently denied. Open app Settings to enable it.',
+          LocationAccess.servicesDisabled =>
+            kIsWeb
+                ? 'Browser location services are unavailable. Check browser Settings; manual map and route features remain available.'
+                : 'Location services are off. Open device Settings to enable GPS.',
           LocationAccess.granted => '',
         };
         setState(() => _locationMessage = message);
@@ -616,7 +671,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _currentPosition = position;
       _locationMessage = isWithinTaguigMapArea(point)
           ? null
-          : 'Your location is outside the Taguig coverage area. Manual map features remain available.';
+          : 'Your location is outside the supported coverage area. Manual map features remain available.';
     });
     if (isFirstPosition && isWithinTaguigMapArea(point)) {
       _mapController.move(point, 15);
@@ -661,8 +716,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (kIsWeb) {
       try {
         _permissionPromptInProgress = true;
-        final notificationGranted =
-            await _notificationService.requestPermission();
+        final notificationGranted = await _notificationService
+            .requestPermission();
         _permissionPromptInProgress = false;
         if (!notificationGranted) {
           if (mounted) {
@@ -823,7 +878,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         padding: const EdgeInsets.all(14),
         child: Text(
           _incidents.isEmpty
-              ? 'No verified Taguig incidents are currently available.'
+              ? 'No verified incidents in Taguig City or Pateros are currently available.'
               : 'No incidents match these filters.',
           textAlign: TextAlign.center,
         ),
@@ -842,7 +897,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       child: Material(
         elevation: 2,
         color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.zero,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           child: hasEnoughReports
@@ -856,79 +911,287 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Widget _buildRouteControls(BuildContext context) {
     final theme = Theme.of(context);
     final canAnalyze = _routeStart != null && _routeDestination != null;
-    return Positioned(
-      right: 12,
-      bottom: 18,
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (_currentPosition case final position?
-                when _locationTracking &&
-                    isWithinTaguigMapArea(
-                      LatLng(position.latitude, position.longitude),
-                    ))
-              OutlinedButton.icon(
-                onPressed: () => setState(() {
-                  _routeStart = LatLng(position.latitude, position.longitude);
-                  _routeDestination = null;
-                  _routePlans = const [];
-                  _selectedRouteIndex = 0;
-                }),
-                icon: const Icon(Icons.my_location, size: 18),
-                label: const Text('Use current location as start'),
+    final screenSize = MediaQuery.sizeOf(context);
+    const routeModes = [
+      ('car', 'Car', Icons.directions_car_outlined),
+      ('motorcycle', 'Motorcycle', Icons.two_wheeler_outlined),
+      ('walking', 'Walk', Icons.directions_walk_outlined),
+      ('bicycle', 'Bicycle', Icons.directions_bike_outlined),
+      ('truck', 'Truck', Icons.local_shipping_outlined),
+    ];
+
+    String distanceLabel(double meters) => meters >= 1000
+        ? '${(meters / 1000).toStringAsFixed(1)} km'
+        : '${meters.round()} m';
+
+    Widget endpoint(String label, LatLng? point) {
+      final value = point == null
+          ? 'Tap map or enter coordinates'
+          : '${point.latitude.toStringAsFixed(5)}, '
+                '${point.longitude.toStringAsFixed(5)}';
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          borderRadius: BorderRadius.zero,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                label == 'start'
+                    ? Icons.trip_origin
+                    : Icons.location_on_outlined,
+                size: 19,
+                color: theme.colorScheme.primary,
               ),
-            if (_routeError != null)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Text(
-                    _routeError!,
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-                ),
-              ),
-            if (_routeLoading)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label == 'start' ? 'START' : 'DESTINATION',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        letterSpacing: 0.8,
                       ),
-                      SizedBox(width: 10),
-                      Text('Finding route'),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
                 ),
-              )
-            else if (canAnalyze)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  FilledButton.icon(
-                    onPressed: _analyzeRoute,
-                    icon: const Icon(Icons.alt_route),
-                    label: const Text('Analyze route'),
-                  ),
-                ],
-              )
-            else
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Text(
-                    _routeStart == null
-                        ? 'Tap the map to set a start point.'
-                        : 'Tap the map to set a destination.',
-                  ),
-                ),
+              ),
+              IconButton(
+                tooltip:
+                    'Enter ${label == 'start' ? 'start' : 'destination'} coordinates',
+                onPressed: () => _editRouteEndpoint(isStart: label == 'start'),
+                icon: const Icon(Icons.edit_location_alt_outlined),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final endpointFields = LayoutBuilder(
+      builder: (context, constraints) {
+        final start = endpoint('start', _routeStart);
+        final destination = endpoint('destination', _routeDestination);
+        final swapButton = IconButton(
+          tooltip: 'Swap start and destination',
+          onPressed: !canAnalyze
+              ? null
+              : () {
+                  _invalidateRouteRequest();
+                  setState(() {
+                    final start = _routeStart;
+                    _routeStart = _routeDestination;
+                    _routeDestination = start;
+                    _routePlans = const [];
+                    _selectedRouteIndex = 0;
+                    _routeError = null;
+                  });
+                  unawaited(_analyzeRoute(mode: _routeTravelMode));
+                },
+          icon: const Icon(Icons.swap_vert),
+        );
+        if (constraints.maxWidth < 500) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              start,
+              Align(alignment: Alignment.centerRight, child: swapButton),
+              destination,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: start),
+            swapButton,
+            Expanded(child: destination),
+          ],
+        );
+      },
+    );
+
+    final routeDetails = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Route analysis',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        endpointFields,
+        const SizedBox(height: 10),
+        const Text(
+          'Travel mode',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            for (final mode in routeModes)
+              ChoiceChip(
+                avatar: Icon(mode.$3, size: 18),
+                label: Text(mode.$2),
+                selected: _routeTravelMode == mode.$1,
+                onSelected: _routeLoading
+                    ? null
+                    : (selected) {
+                        if (selected) _selectRouteTravelMode(mode.$1);
+                      },
               ),
           ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          switch (_routeTravelMode) {
+            'motorcycle' =>
+              'Motorcycle ETA is estimated over a car-road route. Motorcycle-specific routing and restrictions are unavailable.',
+            'truck' =>
+              'Truck ETA is estimated over a car-road route. Truck restrictions are not modeled.',
+            'walking' =>
+              'Walking uses a pedestrian routing profile. ETA is provider-supplied, not traffic-aware.',
+            'bicycle' =>
+              'Bicycle uses a cycling routing profile. ETA is provider-supplied, not traffic-aware.',
+            _ =>
+              'Car uses the driving route profile. ETA is provider-supplied, not traffic-aware.',
+          },
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (_routePlans.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${routeModes.firstWhere((mode) => mode.$1 == _routeTravelMode).$2} · '
+                    '${_routeModeEtaLabel(_routePlans[_selectedRouteIndex])} · '
+                    '${(_routePlans[_selectedRouteIndex].durationSeconds / 60).ceil()} min · '
+                    '${distanceLabel(_routePlans[_selectedRouteIndex].distanceMeters)}',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _routePlans[_selectedRouteIndex].etaDescription,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (_currentPosition case final position?
+            when _locationTracking &&
+                isWithinTaguigMapArea(
+                  LatLng(position.latitude, position.longitude),
+                )) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              _invalidateRouteRequest();
+              setState(() {
+                _routeStart = LatLng(position.latitude, position.longitude);
+                _routeDestination = null;
+                _routePlans = const [];
+                _selectedRouteIndex = 0;
+              });
+            },
+            icon: const Icon(Icons.my_location, size: 18),
+            label: const Text('Use current location as start'),
+          ),
+        ],
+        if (_routeError != null) ...[
+          const SizedBox(height: 8),
+          Text(_routeError!, style: TextStyle(color: theme.colorScheme.error)),
+        ],
+      ],
+    );
+    final routeAction = _routeLoading
+        ? FilledButton.icon(
+            onPressed: null,
+            icon: const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            label: const Text('Finding route'),
+          )
+        : FilledButton.icon(
+            onPressed: canAnalyze ? _analyzeRoute : null,
+            icon: const Icon(Icons.alt_route),
+            label: const Text('Analyze route'),
+          );
+    final routePanel = screenSize.width < 500
+        ? SizedBox(
+            height: screenSize.height * 0.46,
+            child: Card(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                      child: routeDetails,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    child: SizedBox(width: double.infinity, child: routeAction),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  routeDetails,
+                  const SizedBox(height: 8),
+                  routeAction,
+                ],
+              ),
+            ),
+          );
+
+    return Positioned(
+      left: 10,
+      right: 10,
+      bottom: 10,
+      child: SafeArea(
+        top: false,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 680,
+              maxHeight: screenSize.height * 0.46,
+            ),
+            child: routePanel,
+          ),
         ),
       ),
     );
@@ -950,15 +1213,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             child: Container(
               decoration: BoxDecoration(
                 color: color,
-                shape: BoxShape.circle,
+                shape: BoxShape.rectangle,
                 border: Border.all(color: Colors.white, width: 2),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
+                boxShadow: const [],
               ),
               child: const Icon(
                 Icons.warning_rounded,
@@ -991,11 +1248,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.blue.shade700,
-                  shape: BoxShape.circle,
+                  shape: BoxShape.rectangle,
                   border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black26, blurRadius: 5),
-                  ],
+                  boxShadow: const [],
                 ),
                 child: const Icon(
                   Icons.my_location,
@@ -1013,9 +1268,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         point: point,
         width: 38,
         height: 38,
-        child: CircleAvatar(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
+        child: Container(
+          color: color,
+          alignment: Alignment.center,
           child: Text(
             label,
             style: const TextStyle(fontWeight: FontWeight.w700),
@@ -1073,6 +1328,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   void _setMode(_MapMode mode) {
     final position = _currentPosition;
+    _invalidateRouteRequest();
     setState(() {
       _mode = mode;
       _routeStart =
@@ -1096,6 +1352,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _showOutOfScopeMessage();
       return;
     }
+    final completingRoute = _routeStart != null && _routeDestination == null;
+    _invalidateRouteRequest();
     setState(() {
       _routeError = null;
       _routePlans = const [];
@@ -1107,17 +1365,221 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _routeDestination = point;
       }
     });
+    if (completingRoute) {
+      unawaited(_analyzeRoute(mode: _routeTravelMode));
+    }
   }
 
-  Future<void> _analyzeRoute() async {
+  Future<void> _editRouteEndpoint({required bool isStart}) async {
+    final existing = isStart ? _routeStart : _routeDestination;
+    var coordinatesInput = existing == null
+        ? ''
+        : '${existing.latitude.toStringAsFixed(5)}, '
+              '${existing.longitude.toStringAsFixed(5)}';
+    var suggestions = const <LocationSuggestion>[];
+    var searching = false;
+    String? searchError;
+    final selected = await showDialog<({LatLng? point, String? coordinates})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> searchLocations() async {
+            setDialogState(() {
+              searching = true;
+              searchError = null;
+              suggestions = const [];
+            });
+            try {
+              final results = await _locationSearchService.search(
+                coordinatesInput,
+              );
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                suggestions = results;
+                searching = false;
+                if (results.isEmpty) {
+                  searchError = 'No matching places in Taguig or Pateros.';
+                }
+              });
+            } on Object catch (error) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                searching = false;
+                searchError = error is LocationSearchException
+                    ? error.message
+                    : 'Place search failed. Try again or enter coordinates.';
+              });
+            }
+          }
+
+          return AlertDialog(
+            scrollable: true,
+            title: Text('Choose ${isStart ? 'start' : 'destination'} location'),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: coordinatesInput,
+                          autofocus: true,
+                          textInputAction: TextInputAction.search,
+                          decoration: const InputDecoration(
+                            labelText: 'Search places or enter coordinates',
+                            hintText: 'Taguig City Hall or 14.5176, 121.0509',
+                          ),
+                          onChanged: (value) {
+                            coordinatesInput = value;
+                            if (suggestions.isNotEmpty || searchError != null) {
+                              setDialogState(() {
+                                suggestions = const [];
+                                searchError = null;
+                              });
+                            }
+                          },
+                          onFieldSubmitted: (_) => searchLocations(),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        tooltip: 'Search locations',
+                        onPressed: searching ? null : searchLocations,
+                        icon: searching
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.search),
+                      ),
+                    ],
+                  ),
+                  if (searchError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          searchError!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (suggestions.isNotEmpty)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 240),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: suggestions.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final suggestion = suggestions[index];
+                          return ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.place_outlined),
+                            title: Text(
+                              suggestion.label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              '${suggestion.point.latitude.toStringAsFixed(5)}, '
+                              '${suggestion.point.longitude.toStringAsFixed(5)}',
+                            ),
+                            onTap: () => Navigator.of(
+                              dialogContext,
+                            ).pop((point: suggestion.point, coordinates: null)),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(
+                  dialogContext,
+                ).pop((point: null, coordinates: coordinatesInput)),
+                child: const Text('Use location'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (selected == null || !mounted) return;
+
+    final point =
+        selected.point ?? _parseRouteCoordinates(selected.coordinates);
+    if (point == null || !isWithinTaguigMapArea(point)) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Choose a suggested place or enter valid latitude, longitude coordinates within Taguig or Pateros.',
+            ),
+          ),
+        );
+      return;
+    }
+
+    _invalidateRouteRequest();
+    setState(() {
+      if (isStart) {
+        _routeStart = point;
+      } else {
+        _routeDestination = point;
+      }
+      _routePlans = const [];
+      _selectedRouteIndex = 0;
+      _routeError = null;
+    });
+    if (_routeStart != null && _routeDestination != null) {
+      unawaited(_analyzeRoute(mode: _routeTravelMode));
+    }
+  }
+
+  LatLng? _parseRouteCoordinates(String? input) {
+    if (input == null) return null;
+    final coordinates = input
+        .split(RegExp(r'[,;\s]+'))
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (coordinates.length != 2) return null;
+    final latitude = double.tryParse(coordinates[0]);
+    final longitude = double.tryParse(coordinates[1]);
+    if (latitude == null ||
+        longitude == null ||
+        !latitude.isFinite ||
+        !longitude.isFinite) {
+      return null;
+    }
+    return LatLng(latitude, longitude);
+  }
+
+  Future<void> _analyzeRoute({String? mode}) async {
     final start = _routeStart;
     final destination = _routeDestination;
+    final selectedMode = mode ?? _routeTravelMode;
     if (start == null || destination == null) return;
     if (!isWithinTaguigMapArea(start) || !isWithinTaguigMapArea(destination)) {
       _showOutOfScopeMessage();
       return;
     }
 
+    final requestGeneration = ++_routeRequestGeneration;
     setState(() {
       _routeLoading = true;
       _routeError = null;
@@ -1126,9 +1588,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       final analysis = await _routeService.fetchRoutes(
         start: start,
         destination: destination,
+        mode: selectedMode,
       );
+      if (!mounted || requestGeneration != _routeRequestGeneration) return;
       final selectedIndex = analysis.recommendedRouteIndex ?? 0;
-      if (!mounted) return;
       setState(() {
         _routePlans = analysis.routes;
         _selectedRouteIndex = selectedIndex;
@@ -1149,17 +1612,36 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       );
     } on RouteException catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestGeneration != _routeRequestGeneration) return;
       setState(() {
         _routeLoading = false;
         _routeError = error.message;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestGeneration != _routeRequestGeneration) return;
       setState(() {
         _routeLoading = false;
         _routeError = 'Unable to analyze this route. Please try again.';
       });
+    }
+  }
+
+  void _invalidateRouteRequest() {
+    _routeRequestGeneration++;
+    _routeLoading = false;
+  }
+
+  void _selectRouteTravelMode(String mode) {
+    if (mode == _routeTravelMode) return;
+    _invalidateRouteRequest();
+    setState(() {
+      _routeTravelMode = mode;
+      _routePlans = const [];
+      _selectedRouteIndex = 0;
+      _routeError = null;
+    });
+    if (_routeStart != null && _routeDestination != null) {
+      unawaited(_analyzeRoute(mode: mode));
     }
   }
 
@@ -1170,7 +1652,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         title: Text('Out of Scope'),
         content: Text(
           'This location is outside the Urban Danger coverage area. '
-          'Currently, only Taguig City is supported.',
+          'Currently, only Taguig City and Pateros are supported.',
         ),
       ),
     );
@@ -1259,7 +1741,7 @@ class _IncidentMarkerSheet extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: severityColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.zero,
                     border: Border.all(
                       color: severityColor.withValues(alpha: 0.3),
                     ),
@@ -1348,7 +1830,7 @@ class _RouteSummarySheet extends StatelessWidget {
                     height: 40,
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.zero,
                       border: Border.all(
                         color: theme.colorScheme.primary.withValues(alpha: 0.3),
                       ),
@@ -1416,7 +1898,7 @@ class _RouteSummarySheet extends StatelessWidget {
                         'Route ${entry.$1 + 1}${route.isRecommended ? ' · Suggested' : ''}',
                       ),
                       subtitle: Text(
-                        '$distanceLabel · estimated $durationMinutes min · '
+                        '$distanceLabel · ${route.durationSource == 'estimated' ? 'estimated' : 'provider ETA'} $durationMinutes min · '
                         '${count == null ? 'incident comparison unavailable' : '$count nearby verified incidents'}',
                       ),
                       trailing: const Icon(Icons.chevron_right),
@@ -1440,7 +1922,10 @@ class _RouteSummarySheet extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          '${plan.distanceMeters >= 1000 ? '${(plan.distanceMeters / 1000).toStringAsFixed(1)} km' : '${plan.distanceMeters.round()} m'} · estimated ${(plan.durationSeconds / 60).round()} min by road',
+                          '${_routeModeLabel(plan.routeMode)} · '
+                          '${_routeModeEtaLabel(plan)} · '
+                          '${_formatDuration(plan.durationSeconds)} · '
+                          '${_formatDistance(plan.distanceMeters)}',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
@@ -1453,7 +1938,7 @@ class _RouteSummarySheet extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 child: Text(
-                  'Estimated travel time; routing provider does not supply live traffic.',
+                  plan.etaDescription,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -1504,6 +1989,30 @@ class _RouteSummarySheet extends StatelessWidget {
       ),
     );
   }
+}
+
+String _routeModeLabel(String mode) => switch (mode) {
+  'car' => 'Car',
+  'motorcycle' => 'Motorcycle',
+  'walking' => 'Walking',
+  'bicycle' => 'Bicycle',
+  'truck' => 'Truck',
+  _ => mode,
+};
+
+String _routeModeEtaLabel(RoutePlan plan) =>
+    plan.durationSource == 'estimated' ? 'Estimated ETA' : 'Provider ETA';
+
+String _formatDistance(double meters) => meters >= 1000
+    ? '${(meters / 1000).toStringAsFixed(1)} km'
+    : '${meters.round()} m';
+
+String _formatDuration(double seconds) {
+  final totalMinutes = (seconds / 60).round();
+  final hours = totalMinutes ~/ 60;
+  final minutes = totalMinutes % 60;
+  if (hours == 0) return '$totalMinutes min';
+  return minutes == 0 ? '$hours hr' : '$hours hr $minutes min';
 }
 
 String _formatDate(BuildContext context, Incident incident) {

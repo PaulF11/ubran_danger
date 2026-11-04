@@ -143,7 +143,7 @@ class _MapFilterSheetState extends State<MapFilterSheet> {
                 items: [
                   const DropdownMenuItem<String?>(
                     value: null,
-                    child: Text('All Taguig barangays'),
+                    child: Text('All covered barangays'),
                   ),
                   ...widget.barangays.map(
                     (barangay) => DropdownMenuItem<String?>(

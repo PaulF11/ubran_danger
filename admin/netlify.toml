@@ -1,6 +1,16 @@
 [build]
+  base = "admin"
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  VITE_API_BASE_URL = "https://urbandangerinteladmin.netlify.app"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api-proxy/:splat"
+  status = 200
 
 [[redirects]]
   from = "/*"

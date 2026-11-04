@@ -27,6 +27,13 @@ function createBackgroundHandler({
     }
 
     const service = require("../../backend/src/services/scheduledIngestionService");
+    const pipeline =
+      require("../../backend/src/services/automatedIncidentPipeline").runAutomatedIngestion;
+    const runSource =
+      event.headers?.["x-ingestion-run-source"] === "MANUAL" ||
+      event.headers?.["X-Ingestion-Run-Source"] === "MANUAL"
+        ? "MANUAL"
+        : "SCHEDULED";
     try {
       service.validateIngestionEnvironment(environment);
     } catch {
@@ -37,14 +44,25 @@ function createBackgroundHandler({
     }
 
     try {
+      const reviewStore =
+        runSource === "MANUAL"
+          ? require("../../backend/src/services/adminScanReviewService").createAdminScanReviewService()
+          : null;
       const result = runIngestion
         ? await runIngestion()
         : await service.runScheduledIngestion({
             environment,
             dbPool: require("../../backend/src/config/database"),
+            runSource,
             runPipeline:
-              require("../../backend/src/services/automatedIncidentPipeline")
-                .runAutomatedIngestion,
+              runSource === "MANUAL"
+                ? ({ runId }) =>
+                    pipeline({
+                      runId,
+                      persistVerifiedCandidates: false,
+                      reviewStore,
+                    })
+                : pipeline,
             logger,
           });
       if (result.status === "FAILED") {

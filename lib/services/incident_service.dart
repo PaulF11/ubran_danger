@@ -9,17 +9,20 @@ class IncidentService {
   IncidentService({http.Client? client, Uri? baseUri})
     : _client = client ?? http.Client(),
       _ownsClient = client == null,
-      _endpoint = (baseUri ?? ApiConfig.baseUri).resolve(
-        '/api/incidents',
-      );
+      _endpoint = (baseUri ?? ApiConfig.baseUri).resolve('/api/incidents');
 
   final http.Client _client;
   final bool _ownsClient;
   final Uri _endpoint;
 
-  Future<List<Incident>> fetchIncidents() async {
+  Future<List<Incident>> fetchIncidents({
+    IncidentFeedView view = IncidentFeedView.recent,
+  }) async {
+    final endpoint = _endpoint.replace(
+      queryParameters: {..._endpoint.queryParameters, 'view': view.value},
+    );
     final response = await _client
-        .get(_endpoint, headers: const {'Accept': 'application/json'})
+        .get(endpoint, headers: const {'Accept': 'application/json'})
         .timeout(
           const Duration(seconds: 10),
           onTimeout: () => throw const IncidentApiException(
@@ -64,6 +67,16 @@ class IncidentService {
       _client.close();
     }
   }
+}
+
+enum IncidentFeedView {
+  recent('recent'),
+  historical('historical'),
+  all('all');
+
+  const IncidentFeedView(this.value);
+
+  final String value;
 }
 
 class IncidentApiException implements Exception {

@@ -18,21 +18,52 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Verified incident intelligence for Taguig City and Pateros.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="urban_danger">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="apple-mobile-web-app-title" content="Urban Danger">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/svg+xml" href="assets/assets/brand/urban-danger-mark-black.svg"/>
 
-  <title>urban_danger</title>
+  <title>Urban Danger Intelligence</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; background: #ffffff; }
+    #urban-danger-loading {
+      position: fixed; inset: 0; z-index: 10; display: grid; place-content: center;
+      justify-items: center; gap: 24px; background: #ffffff;
+    }
+    #urban-danger-loading img { display: block; width: min(84vw, 360px); height: auto; }
+    #urban-danger-loading span {
+      width: 40px; height: 2px; overflow: hidden; background: #e5e5e5;
+    }
+    #urban-danger-loading span::after {
+      content: ""; display: block; width: 40%; height: 100%; background: #000000;
+      animation: urban-danger-loading 1s ease-in-out infinite alternate;
+    }
+    @keyframes urban-danger-loading {
+      from { transform: translateX(0); }
+      to { transform: translateX(150%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #urban-danger-loading span::after { animation: none; width: 100%; }
+    }
+  </style>
 </head>
 <body>
+  <div id="urban-danger-loading" role="status" aria-label="Loading Urban Danger Intelligence">
+    <img src="assets/assets/brand/urban-danger-horizontal-black.svg" alt="Urban Danger Intelligence">
+    <span aria-hidden="true"></span>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', () => {
+      document.getElementById('urban-danger-loading')?.remove();
+    }, { once: true });
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

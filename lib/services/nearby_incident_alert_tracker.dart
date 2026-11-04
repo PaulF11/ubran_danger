@@ -46,7 +46,7 @@ class NearbyIncidentAlertTracker {
       final latitude = incident.latitude;
       final longitude = incident.longitude;
       if (incident.verificationStatus != 'VERIFIED' ||
-          incident.city != 'Taguig City' ||
+          (incident.city != 'Taguig City' && incident.city != 'Pateros') ||
           latitude == null ||
           longitude == null ||
           !latitude.isFinite ||

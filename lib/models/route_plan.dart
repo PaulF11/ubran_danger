@@ -6,6 +6,10 @@ class RoutePlan {
     required this.durationSeconds,
     required this.points,
     required this.intelligence,
+    this.routeMode = 'car',
+    this.durationSource = 'provider',
+    this.etaDescription =
+        'Provider-supplied route duration; live traffic is not included.',
     this.isRecommended = false,
     this.recommendationReason,
   });
@@ -14,6 +18,9 @@ class RoutePlan {
   final double durationSeconds;
   final List<LatLng> points;
   final RouteIntelligence intelligence;
+  final String routeMode;
+  final String durationSource;
+  final String etaDescription;
   final bool isRecommended;
   final String? recommendationReason;
 
@@ -43,6 +50,9 @@ class RoutePlan {
     final distanceMeters = (json['distanceMeters'] as num).toDouble();
     final durationSeconds = (json['durationSeconds'] as num).toDouble();
     final rawIntelligence = json['routeIntelligence'];
+    final routeMode = json['routeMode'];
+    final durationSource = json['durationSource'];
+    final etaDescription = json['etaDescription'];
     final isRecommended = json['isRecommended'];
     final recommendationReason = json['recommendationReason'];
     if (!distanceMeters.isFinite ||
@@ -50,6 +60,11 @@ class RoutePlan {
         !durationSeconds.isFinite ||
         durationSeconds < 0 ||
         rawIntelligence is! Map<String, dynamic> ||
+        (routeMode != null && routeMode is! String) ||
+        (durationSource != null && durationSource is! String) ||
+        (durationSource != null &&
+            !const ['provider', 'estimated'].contains(durationSource)) ||
+        (etaDescription != null && etaDescription is! String) ||
         (isRecommended != null && isRecommended is! bool) ||
         (recommendationReason != null && recommendationReason is! String)) {
       throw const FormatException('Invalid route analysis.');
@@ -60,6 +75,11 @@ class RoutePlan {
       durationSeconds: durationSeconds,
       points: points,
       intelligence: RouteIntelligence.fromJson(rawIntelligence),
+      routeMode: routeMode as String? ?? 'car',
+      durationSource: durationSource as String? ?? 'provider',
+      etaDescription:
+          etaDescription as String? ??
+          'Provider-supplied route duration; live traffic is not included.',
       isRecommended: isRecommended as bool? ?? false,
       recommendationReason: recommendationReason as String?,
     );
@@ -128,6 +148,9 @@ class RouteAnalysis {
               durationSeconds: entry.value.durationSeconds,
               points: entry.value.points,
               intelligence: entry.value.intelligence,
+              routeMode: entry.value.routeMode,
+              durationSource: entry.value.durationSource,
+              etaDescription: entry.value.etaDescription,
               isRecommended: entry.key == recommendedRouteIndex,
               recommendationReason: entry.key == recommendedRouteIndex
                   ? recommendationReason

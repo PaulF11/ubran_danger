@@ -9,6 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TAGUIG_BARANGAY_SET = new Set(
   TAGUIG_BARANGAYS.map((barangay) => barangay.toLowerCase()),
 );
+const VALID_CITY_NAMES = new Set(["taguig city", "pateros"]);
 
 function proximityThresholdFromEnvironment(environment = process.env) {
   const configured = environment.ROUTE_INCIDENT_PROXIMITY_METERS;
@@ -164,8 +165,9 @@ function analyzeRouteSafety(
   for (const incident of incidents || []) {
     if (
       incident?.verification_status !== "VERIFIED" ||
-      incident.city !== "Taguig City" ||
-      (incident.barangay !== null &&
+      !VALID_CITY_NAMES.has(String(incident.city || "").trim().toLowerCase()) ||
+      (String(incident.city || "").trim() === "Taguig City" &&
+        incident.barangay !== null &&
         incident.barangay !== undefined &&
         !TAGUIG_BARANGAY_SET.has(String(incident.barangay).trim().toLowerCase()))
     ) {

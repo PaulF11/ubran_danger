@@ -70,7 +70,7 @@ class RouteSafetySummary extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.zero,
                         border: Border.all(
                           color: theme.colorScheme.outlineVariant,
                         ),
@@ -130,7 +130,7 @@ class RouteSafetySummary extends StatelessWidget {
                               context,
                               incident.severity,
                             ).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.zero,
                           ),
                           child: Icon(
                             Icons.warning_amber_rounded,
@@ -169,7 +169,7 @@ class RouteSafetySummary extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface.withValues(alpha: 0.65),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.zero,
             border: Border.all(color: theme.colorScheme.outlineVariant),
           ),
           child: Row(

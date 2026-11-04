@@ -4,6 +4,9 @@ const {
   runAutomatedIngestion,
 } = require("../services/automatedIncidentPipeline");
 const { runManualIngestion } = require("../services/scheduledIngestionService");
+const {
+  normalizeTrustedHosts,
+} = require("../services/sourceCollectorService");
 
 const router = express.Router();
 
@@ -14,12 +17,7 @@ router.get("/status", (req, res) => {
       architecture: "automated_verified_incident_pipeline",
       coverage: "Taguig City, Philippines",
       publicApi: "/api/incidents",
-      trustedSourceAllowlist: (
-        process.env.TRUSTED_SOURCE_HOSTS || "taguig.gov.ph,pnp.gov.ph"
-      )
-        .split(",")
-        .map((host) => host.trim())
-        .filter(Boolean),
+      trustedSourceAllowlist: normalizeTrustedHosts(),
       ingestionEnabled: process.env.NODE_ENV !== "production",
     },
   });
@@ -53,6 +51,12 @@ router.post("/ingest", async (req, res, next) => {
         success: false,
         message: "Automated ingestion failed.",
         data: { category: run.category },
+      });
+    }
+    if (run.status === "SKIPPED") {
+      return res.status(409).json({
+        success: false,
+        message: "Another ingestion run is already active.",
       });
     }
     return res.json({ success: true, data: run.result });

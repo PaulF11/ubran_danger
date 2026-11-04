@@ -230,6 +230,32 @@ test("dashboard reports verified-only system statistics and latest run", async (
   });
 });
 
+test("admin dashboard queries include verified Taguig and Pateros incidents", async () => {
+  const queries = [];
+  const data = createAdminDataService({
+    database: {
+      async execute(sql) {
+        queries.push(sql);
+        if (sql.includes("SUM(incidents.created_at")) {
+          return [[{ total: 2, recent: 1 }]];
+        }
+        if (sql.includes("FROM ingestion_runs")) return [[runRow]];
+        return [[{ label: "Pateros", count: 1 }]];
+      },
+    },
+  });
+
+  const dashboard = await data.getDashboard();
+  const incidentQueries = queries.filter((sql) => sql.includes("FROM incidents"));
+
+  assert.equal(dashboard.totalVerifiedIncidents, 2);
+  assert.equal(incidentQueries.length, 4);
+  for (const sql of incidentQueries) {
+    assert.match(sql, /incidents\.city IN \('Taguig City', 'Pateros'\)/);
+    assert.match(sql, /incidents\.city = 'Pateros'/);
+  }
+});
+
 test("dashboard safely handles a missing ingestion history table", async () => {
   const database = createDatabase();
   const databaseWithoutRunHistory = {

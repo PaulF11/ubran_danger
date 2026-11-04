@@ -7,6 +7,7 @@ const incidentsRouter = require("./routes/incidents");
 const analyticsRouter = require("./routes/analytics");
 const routesRouter = require("./routes/routes");
 const systemRouter = require("./routes/system");
+const { createAuthRouter } = require("./routes/auth");
 const { createAdminRouter } = require("./routes/admin");
 const errorHandler = require("./middleware/errorHandler");
 
@@ -65,6 +66,7 @@ app.use("/api/incidents", incidentsRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/routes", routesRouter);
 app.use("/api/system", systemRouter);
+app.use("/api/auth", createAuthRouter());
 app.use("/api/admin", createAdminRouter());
 
 app.use((req, res) => {

@@ -2,9 +2,19 @@
   base = "."
   publish = "build/web"
   functions = "netlify/functions"
+  command = "npm run build:web"
+
+[build.environment]
+  API_BASE_URL = "https://urbandangerintel.netlify.app"
 
 [functions."scheduled-ingestion"]
   schedule = "0 */6 * * *"
+
+[functions.api]
+  included_files = ["backend/src/config/aiven-project-ca.pem"]
+
+[functions."ingest-background"]
+  included_files = ["backend/src/config/aiven-project-ca.pem"]
 
 [[redirects]]
   from = "/api/*"

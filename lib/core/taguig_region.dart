@@ -8,6 +8,10 @@ final taguigMapBounds = LatLngBounds(
   const LatLng(14.45, 120.98),
   const LatLng(14.62, 121.12),
 );
+final paterosMapBounds = LatLngBounds(
+  const LatLng(14.48, 121.02),
+  const LatLng(14.56, 121.09),
+);
 
 // Simplified OSM administrative boundary relation 184776 for Taguig City.
 const taguigBoundary = <LatLng>[
@@ -38,13 +42,13 @@ MapOptions taguigMapOptions({required TapCallback onTap}) => MapOptions(
   onTap: onTap,
 );
 
-bool isWithinTaguigMapArea(LatLng point) {
+bool isInsidePolygon(LatLng point, List<LatLng> polygon) {
   var isInside = false;
-  for (var index = 0, previous = taguigBoundary.length - 1;
-      index < taguigBoundary.length;
+  for (var index = 0, previous = polygon.length - 1;
+      index < polygon.length;
       previous = index++) {
-    final currentPoint = taguigBoundary[index];
-    final previousPoint = taguigBoundary[previous];
+    final currentPoint = polygon[index];
+    final previousPoint = polygon[previous];
     final crossesLatitude =
         (currentPoint.latitude > point.latitude) !=
         (previousPoint.latitude > point.latitude);
@@ -60,4 +64,14 @@ bool isWithinTaguigMapArea(LatLng point) {
     }
   }
   return isInside;
+}
+
+bool isWithinTaguigMapArea(LatLng point) {
+  if (isInsidePolygon(point, taguigBoundary)) {
+    return true;
+  }
+  return point.latitude >= paterosMapBounds.southWest.latitude &&
+      point.latitude <= paterosMapBounds.northEast.latitude &&
+      point.longitude >= paterosMapBounds.southWest.longitude &&
+      point.longitude <= paterosMapBounds.northEast.longitude;
 }

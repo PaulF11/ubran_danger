@@ -6,11 +6,14 @@ const {
   recommendRoute,
   validateRouteGeometry,
 } = require("../services/routeIntelligenceService");
+const { routeProfileInfo } = require("../services/osrmRoutingService");
 const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
 const {
   TAGUIG_BARANGAY_PARAMS,
-  TAGUIG_BARANGAY_SQL,
 } = require("../constants/taguigBarangays");
+const {
+  VERIFIED_INCIDENT_SCOPE,
+} = require("../constants/verifiedIncidentScope");
 
 const ROUTE_INCIDENTS_QUERY = `SELECT
     incidents.id,
@@ -29,15 +32,10 @@ const ROUTE_INCIDENTS_QUERY = `SELECT
     ON incidents.category_id = incident_categories.id
   LEFT JOIN locations
     ON incidents.location_id = locations.id
-  WHERE incidents.verification_status = 'VERIFIED'
-    AND incidents.city = 'Taguig City'
-    AND incidents.source_name IS NOT NULL
-    AND incidents.source_url IS NOT NULL
-    AND incidents.verification_method IS NOT NULL
-    AND incidents.last_verified_at IS NOT NULL
+  WHERE ${VERIFIED_INCIDENT_SCOPE}
     AND locations.latitude IS NOT NULL
     AND locations.longitude IS NOT NULL
-    AND (locations.barangay IS NULL OR ${TAGUIG_BARANGAY_SQL})`;
+`;
 
 function unavailableIntelligence() {
   return {
@@ -65,6 +63,7 @@ function createRoutesController({
     );
     return rows;
   },
+  getRouteProfileInfo = routeProfileInfo,
   getThreshold = () => proximityThresholdFromEnvironment(),
   logger = console,
 } = {}) {
@@ -72,9 +71,29 @@ function createRoutesController({
     getRoutes ||
     (getRoute === routingService.getRoute
       ? routingService.getRoutes
-      : async (start, destination) => [await getRoute(start, destination)]);
-  return async (req, res) => {
-    const { start, destination } = req.body || {};
+      : async (start, destination, options) => [
+          await getRoute(start, destination, options),
+        ]);
+  return async (req, res, next) => {
+    const { start, destination, mode = "car" } = req.body || {};
+    let routeInfo;
+    try {
+      routeInfo = getRouteProfileInfo(mode);
+    } catch (error) {
+      if (error?.code !== "INVALID_ROUTE_CONFIGURATION") return next(error);
+      logger.error("[route-analysis] failed category=invalid_configuration");
+      return res.status(503).json({
+        success: false,
+        message:
+          "Route service is temporarily misconfigured. Please try again later.",
+      });
+    }
+    if (!routeInfo.supported) {
+      return res.status(400).json({
+        success: false,
+        message: routeInfo.message,
+      });
+    }
     const validCoordinate = (point) =>
       point &&
       Number.isFinite(point.latitude) &&
@@ -91,7 +110,9 @@ function createRoutesController({
 
     let routes;
     try {
-      const receivedRoutes = await fetchRoutes(start, destination);
+      const receivedRoutes = await fetchRoutes(start, destination, {
+        mode: routeInfo.mode,
+      });
       if (!Array.isArray(receivedRoutes) || receivedRoutes.length === 0) {
         throw new Error("no_routes");
       }
@@ -111,6 +132,10 @@ function createRoutesController({
             point.longitude,
             point.latitude,
           ]),
+          routeMode: routeInfo.mode,
+          providerProfile: routeInfo.profile,
+          durationSource: routeInfo.durationSource,
+          etaDescription: routeInfo.etaDescription,
         };
       };
       routes = [normalizeRoute(receivedRoutes[0])];

@@ -5,20 +5,24 @@ import '../../services/incident_service.dart';
 import 'incident_details_screen.dart';
 
 class IncidentsScreen extends StatefulWidget {
-  const IncidentsScreen({super.key});
+  const IncidentsScreen({super.key, this.incidentService});
+
+  final IncidentService? incidentService;
 
   @override
   State<IncidentsScreen> createState() => _IncidentsScreenState();
 }
 
 class _IncidentsScreenState extends State<IncidentsScreen> {
-  final IncidentService _incidentService = IncidentService();
+  late final IncidentService _incidentService =
+      widget.incidentService ?? IncidentService();
   final TextEditingController _searchController = TextEditingController();
   List<Incident> _incidents = [];
   String? _errorMessage;
   String? _selectedCategory;
   String? _selectedSeverity;
   String _searchQuery = '';
+  IncidentFeedView _feedView = IncidentFeedView.recent;
   bool _isLoading = true;
 
   List<String> get _categories =>
@@ -32,13 +36,19 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
           final matchesQuery =
               query.isEmpty ||
               incident.categoryName.toLowerCase().contains(query) ||
+              incident.categoryDescription.toLowerCase().contains(query) ||
               (incident.barangay ?? '').toLowerCase().contains(query) ||
               (incident.locationDescription ?? '').toLowerCase().contains(
                 query,
               ) ||
               incident.city.toLowerCase().contains(query) ||
               incident.severity.toLowerCase().contains(query) ||
+              incident.incidentDate.toIso8601String().toLowerCase().contains(
+                query,
+              ) ||
+              incident.source.toLowerCase().contains(query) ||
               incident.sourceName.toLowerCase().contains(query) ||
+              incident.verificationStatus.toLowerCase().contains(query) ||
               incident.description.toLowerCase().contains(query);
           final matchesCategory =
               _selectedCategory == null ||
@@ -69,7 +79,7 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
     });
 
     try {
-      final incidents = await _incidentService.fetchIncidents();
+      final incidents = await _incidentService.fetchIncidents(view: _feedView);
       if (!mounted) return;
 
       setState(() {
@@ -91,7 +101,7 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    _incidentService.close();
+    if (widget.incidentService == null) _incidentService.close();
     super.dispose();
   }
 
@@ -116,27 +126,27 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
                     hasScrollBody: false,
                     child: _buildErrorState(context),
                   )
-                else if (_incidents.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(
-                      icon: Icons.fact_check_outlined,
-                      message: 'No verified incidents found.',
-                    ),
-                  )
                 else ...[
-                  SliverToBoxAdapter(child: _buildSearchAndFilters(context)),
-                  if (_visibleIncidents.isEmpty)
+                  SliverToBoxAdapter(child: _buildFeedSelector(context)),
+                  if (_incidents.isNotEmpty)
+                    SliverToBoxAdapter(child: _buildSearchAndFilters(context)),
+                  if (_incidents.isEmpty || _visibleIncidents.isEmpty)
                     SliverFillRemaining(
                       hasScrollBody: false,
                       child: _EmptyState(
                         icon: Icons.search_off,
-                        message: 'No incidents match your search or filters.',
-                        action: TextButton.icon(
-                          onPressed: _clearFilters,
-                          icon: const Icon(Icons.filter_alt_off_outlined),
-                          label: const Text('Clear filters'),
-                        ),
+                        message: _incidents.isEmpty
+                            ? _feedView == IncidentFeedView.recent
+                                  ? 'No verified incidents in the last 90 days.'
+                                  : 'No historical verified incidents found.'
+                            : 'No incidents found.',
+                        action: _incidents.isEmpty
+                            ? null
+                            : TextButton.icon(
+                                onPressed: _clearFilters,
+                                icon: const Icon(Icons.filter_alt_off_outlined),
+                                label: const Text('Clear filters'),
+                              ),
                       ),
                     )
                   else ...[
@@ -175,15 +185,18 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(14),
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.zero,
+              border: Border.all(
+                color: theme.colorScheme.primary.withValues(alpha: 0.36),
+              ),
             ),
             child: Icon(
-              Icons.warning_amber_rounded,
-              color: theme.colorScheme.onPrimaryContainer,
+              Icons.crisis_alert_outlined,
+              color: theme.colorScheme.primary,
             ),
           ),
           const SizedBox(width: 14),
@@ -191,6 +204,14 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  'COMMUNITY INCIDENT FEED',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 3),
                 Text(
                   'Verified incidents',
                   style: theme.textTheme.headlineSmall?.copyWith(
@@ -295,6 +316,7 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
                   ],
                 );
               }
+
               return Row(
                 children: [
                   Expanded(child: categoryField),
@@ -314,6 +336,33 @@ class _IncidentsScreenState extends State<IncidentsScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFeedSelector(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: SegmentedButton<IncidentFeedView>(
+        segments: const [
+          ButtonSegment(
+            value: IncidentFeedView.recent,
+            label: Text('Recent 90 days'),
+            icon: Icon(Icons.new_releases_outlined),
+          ),
+          ButtonSegment(
+            value: IncidentFeedView.historical,
+            label: Text('Historical archive'),
+            icon: Icon(Icons.history),
+          ),
+        ],
+        selected: {_feedView},
+        onSelectionChanged: (selection) {
+          final nextView = selection.first;
+          if (nextView == _feedView) return;
+          setState(() => _feedView = nextView);
+          _fetchIncidents();
+        },
       ),
     );
   }
@@ -364,68 +413,92 @@ class _IncidentCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      incident.categoryName,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: severityColor, width: 3)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'CATEGORY',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            incident.categoryName,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  _StatusBadge(
-                    label: incident.severity,
-                    color: severityColor,
-                    icon: Icons.priority_high,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _IconLabel(
-                icon: Icons.location_on_outlined,
-                label: incident.locationDescription ??
-                    incident.barangay ??
-                    incident.city,
-              ),
-              const SizedBox(height: 6),
-              _IconLabel(
-                icon: Icons.schedule,
-                label: _formatIncidentDate(context, incident),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                incident.description,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _StatusBadge(
-                    label: 'VERIFIED',
-                    color: theme.colorScheme.tertiary,
-                    icon: Icons.verified_outlined,
-                  ),
-                  _IconLabel(
-                    icon: Icons.source_outlined,
-                    label: incident.sourceName,
-                    style: theme.textTheme.labelMedium,
-                  ),
-                ],
-              ),
-            ],
+                    const SizedBox(width: 10),
+                    _StatusBadge(
+                      label: incident.severity,
+                      color: severityColor,
+                      icon: Icons.priority_high,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 7,
+                  children: [
+                    _IconLabel(
+                      icon: Icons.location_on_outlined,
+                      label:
+                          incident.locationDescription ??
+                          incident.barangay ??
+                          incident.city,
+                    ),
+                    _IconLabel(
+                      icon: Icons.schedule,
+                      label: _formatIncidentDate(context, incident),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  incident.description,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _StatusBadge(
+                      label: 'VERIFIED',
+                      color: theme.colorScheme.primary,
+                      icon: Icons.verified_outlined,
+                    ),
+                    _IconLabel(
+                      icon: Icons.source_outlined,
+                      label: incident.sourceName,
+                      style: theme.textTheme.labelMedium,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -450,7 +523,8 @@ class _StatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.zero,
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

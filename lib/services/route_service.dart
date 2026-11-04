@@ -20,14 +20,20 @@ class RouteService {
   Future<RoutePlan> fetchRoute({
     required LatLng start,
     required LatLng destination,
+    String mode = 'car',
   }) async {
-    final analysis = await fetchRoutes(start: start, destination: destination);
+    final analysis = await fetchRoutes(
+      start: start,
+      destination: destination,
+      mode: mode,
+    );
     return analysis.routes.first;
   }
 
   Future<RouteAnalysis> fetchRoutes({
     required LatLng start,
     required LatLng destination,
+    String mode = 'car',
   }) async {
     late final http.Response response;
     try {
@@ -44,6 +50,7 @@ class RouteService {
                 'latitude': destination.latitude,
                 'longitude': destination.longitude,
               },
+              'mode': mode,
             }),
           )
           .timeout(
@@ -77,6 +84,17 @@ class RouteService {
     final data = decoded['data'];
     if (decoded['success'] != true || data is! Map<String, dynamic>) {
       throw const RouteException('The server returned an invalid route.');
+    }
+    if (data['routeMode'] == null && mode != 'car') {
+      throw RouteException(
+        'The route provider did not confirm a $mode route. '
+        'This travel mode is unavailable from the configured backend.',
+      );
+    }
+    if (data['routeMode'] != null && data['routeMode'] != mode) {
+      throw RouteException(
+        'The route provider returned ${data['routeMode']} routing instead of $mode.',
+      );
     }
     try {
       return RouteAnalysis.fromJson(data);

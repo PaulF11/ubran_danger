@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../../models/analytics_summary.dart';
+import '../../models/incident.dart';
 import '../../services/analytics_service.dart';
+import '../../services/incident_service.dart';
+import '../incidents/incident_details_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.onOpenMap,
+    this.onOpenIncidents,
+    this.incidentService,
+  });
+
+  final VoidCallback? onOpenMap;
+  final VoidCallback? onOpenIncidents;
+  final IncidentService? incidentService;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -12,14 +24,60 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final AnalyticsService _service = AnalyticsService();
+  late final IncidentService _incidentService =
+      widget.incidentService ?? IncidentService();
   AnalyticsSummary? _summary;
+  List<Incident> _recentIncidents = [];
   String? _errorMessage;
+  String? _incidentsError;
   bool _isLoading = true;
+  bool _incidentsLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadSummary();
+    _loadRecentIncidents();
+  }
+
+  Future<void> _loadRecentIncidents() async {
+    setState(() {
+      _incidentsLoading = true;
+      _incidentsError = null;
+    });
+    try {
+      final incidents = await _incidentService.fetchIncidents(
+        view: IncidentFeedView.recent,
+      );
+      if (!mounted) return;
+      final verified =
+          incidents
+              .where(
+                (incident) =>
+                    incident.verificationStatus.toUpperCase() == 'VERIFIED',
+              )
+              .toList()
+            ..sort(
+              (first, second) =>
+                  second.incidentDate.compareTo(first.incidentDate),
+            );
+      setState(() {
+        _recentIncidents = verified.take(3).toList(growable: false);
+        _incidentsLoading = false;
+      });
+    } on IncidentApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _incidentsError = error.message;
+        _incidentsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _incidentsError = 'Recent incidents are unavailable. Please try again.';
+        _incidentsLoading = false;
+      });
+    }
   }
 
   Future<void> _loadSummary() async {
@@ -52,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _service.close();
+    if (widget.incidentService == null) _incidentService.close();
     super.dispose();
   }
 
@@ -64,18 +123,56 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 32),
           children: [
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    shape: BoxShape.rectangle,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Text(
+                  'TAGUIG CITY + PATEROS  /  VERIFIED DATA',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    letterSpacing: 1.15,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 9),
             Text(
-              'Urban Danger Intelligence System',
+              'Safety intelligence',
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 6),
             Text(
-              'Verified incident information for Taguig City',
+              'A clear view of verified incident activity across Taguig City and Pateros.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: widget.onOpenMap,
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('Open live map'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: widget.onOpenIncidents,
+                  icon: const Icon(Icons.list_alt_outlined),
+                  label: const Text('Browse incidents'),
+                ),
+              ],
             ),
             const SizedBox(height: 18),
             if (_isLoading)
@@ -113,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const _AnalyticsMessage(
                   icon: Icons.location_city_outlined,
                   message:
-                      'No verified Taguig incidents are currently available.',
+                      'No verified incidents in Taguig City or Pateros are currently available.',
                 )
               else ...[
                 _AnalyticsSection(
@@ -145,6 +242,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ],
+            const SizedBox(height: 22),
+            _RecentIncidentsSection(
+              incidents: _recentIncidents,
+              isLoading: _incidentsLoading,
+              errorMessage: _incidentsError,
+              onRetry: _loadRecentIncidents,
+              onOpenIncidents: widget.onOpenIncidents,
+            ),
           ],
         ),
       ),
@@ -163,27 +268,42 @@ class _IncidentActivityCard extends StatelessWidget {
     final theme = Theme.of(context);
     final color = _activityColor(level);
     return Card(
-      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: Row(
           children: [
-            Icon(Icons.assessment_outlined, color: color, size: 28),
-            const SizedBox(width: 12),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.zero,
+                border: Border.all(color: color.withValues(alpha: 0.32)),
+              ),
+              child: Icon(Icons.monitor_heart_outlined, color: color, size: 22),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'INCIDENT ACTIVITY · ${level.toUpperCase()}',
-                    style: theme.textTheme.titleSmall?.copyWith(
+                    'CURRENT ACTIVITY',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    level.toUpperCase(),
+                    style: theme.textTheme.titleMedium?.copyWith(
                       color: color,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 3),
                   Text(
-                    '$total verified ${total == 1 ? 'incident' : 'incidents'} recorded in Taguig',
+                    '$total verified ${total == 1 ? 'incident' : 'incidents'} recorded',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
@@ -206,56 +326,193 @@ class _ActivitySection extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.location_city_outlined,
-                size: 20,
-                color: theme.colorScheme.primary,
+              _SectionHeading(
+                title: 'Activity by barangay',
+                icon: Icons.location_city_outlined,
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Incident activity by barangay',
-                style: theme.textTheme.titleMedium,
-              ),
+              const SizedBox(height: 14),
+              ...rows.map((row) {
+                final color = _activityColor(row.level);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 11),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(row.label)),
+                      Text(
+                        '${row.count}',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.zero,
+                        ),
+                        child: Text(
+                          row.level,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
             ],
           ),
-          const SizedBox(height: 10),
-          ...rows.map((row) {
-            final color = _activityColor(row.level);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: Row(
-                children: [
-                  Expanded(child: Text(row.label)),
-                  Text('${row.count}  ', style: theme.textTheme.labelLarge),
-                  Text(
-                    row.level,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
+        ),
       ),
     );
   }
 }
 
 Color _activityColor(String level) => switch (level.toUpperCase()) {
-  'LOW' => Colors.green.shade700,
-  'MODERATE' => Colors.amber.shade800,
-  'HIGH' => Colors.orange.shade800,
-  'VERY HIGH' => Colors.red.shade800,
-  _ => Colors.grey.shade700,
+  'LOW' => const Color(0xFF176B3A),
+  'MODERATE' => const Color(0xFF755000),
+  'HIGH' => const Color(0xFF9A4B00),
+  'VERY HIGH' => const Color(0xFFA61B1B),
+  _ => const Color(0xFF555555),
 };
+
+class _RecentIncidentsSection extends StatelessWidget {
+  const _RecentIncidentsSection({
+    required this.incidents,
+    required this.isLoading,
+    required this.errorMessage,
+    required this.onRetry,
+    required this.onOpenIncidents,
+  });
+
+  final List<Incident> incidents;
+  final bool isLoading;
+  final String? errorMessage;
+  final VoidCallback onRetry;
+  final VoidCallback? onOpenIncidents;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Recent verified incidents',
+                style: theme.textTheme.titleLarge,
+              ),
+            ),
+            TextButton(
+              onPressed: onOpenIncidents,
+              child: const Text('View all'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (isLoading)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (errorMessage != null)
+          _AnalyticsMessage(
+            icon: Icons.cloud_off_outlined,
+            message: errorMessage!,
+            action: TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          )
+        else if (incidents.isEmpty)
+          const _AnalyticsMessage(
+            icon: Icons.fact_check_outlined,
+            message: 'No verified incidents are currently available.',
+          )
+        else
+          ...incidents.map(
+            (incident) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  title: Text(
+                    incident.categoryName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 5),
+                    child: Text(
+                      '${incident.barangay ?? incident.city} · '
+                      '${incident.incidentDate.toLocal().toString().split(' ').first}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  trailing: _SeverityLabel(severity: incident.severity),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => IncidentDetailsScreen(incident: incident),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SeverityLabel extends StatelessWidget {
+  const _SeverityLabel({required this.severity});
+
+  final String severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = severity.toUpperCase();
+    final color = switch (normalized) {
+      'HIGH' => const Color(0xFFA61B1B),
+      'MEDIUM' => const Color(0xFF755000),
+      _ => const Color(0xFF176B3A),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.zero,
+      ),
+      child: Text(
+        normalized,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
 
 class _TotalReportsCard extends StatelessWidget {
   const _TotalReportsCard({
@@ -270,48 +527,142 @@ class _TotalReportsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      margin: EdgeInsets.zero,
-      color: theme.colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Icon(
-              Icons.fact_check_outlined,
-              size: 32,
-              color: theme.colorScheme.onPrimaryContainer,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: const BoxDecoration(color: Colors.white),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 440;
+              final icon = Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.zero,
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.42),
+                  ),
+                ),
+                child: Icon(
+                  Icons.verified_user_outlined,
+                  color: theme.colorScheme.primary,
+                  size: 25,
+                ),
+              );
+              final reportSummary = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '$total',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  Text(
-                    'Verified Incidents in Taguig',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onPrimaryContainer,
+                    'VERIFIED INCIDENTS',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      letterSpacing: 1,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '$highSeverityTotal High Severity Incidents',
+                    '$total',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      height: 1.05,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Published reports in Taguig City and Pateros',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onPrimaryContainer,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
+              );
+              final highSeveritySummary = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.priority_high_rounded,
+                    color: theme.colorScheme.error,
+                    size: 19,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '$highSeverityTotal',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      color: theme.colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    isCompact ? 'HIGH severity incidents' : 'HIGH',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      letterSpacing: 0.9,
+                    ),
+                  ),
+                ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        icon,
+                        const SizedBox(width: 14),
+                        Expanded(child: reportSummary),
+                      ],
+                    ),
+                    const Divider(height: 28),
+                    highSeveritySummary,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  icon,
+                  const SizedBox(width: 16),
+                  Expanded(child: reportSummary),
+                  Container(
+                    width: 1,
+                    height: 54,
+                    color: theme.colorScheme.outline,
+                  ),
+                  const SizedBox(width: 16),
+                  highSeveritySummary,
+                ],
+              );
+            },
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.title, required this.icon});
+
+  final String title;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 19, color: theme.colorScheme.primary),
+        const SizedBox(width: 9),
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -335,39 +686,47 @@ class _AnalyticsSection extends StatelessWidget {
       (value, item) => item.count > value ? item.count : value,
     );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(title, style: theme.textTheme.titleMedium),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...rows.map((row) {
-            final fraction = maximum == 0 ? 0.0 : row.count / maximum;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              _SectionHeading(title: title, icon: icon),
+              const SizedBox(height: 16),
+              ...rows.map((row) {
+                final fraction = maximum == 0 ? 0.0 : row.count / maximum;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 13),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: Text(row.label)),
-                      const SizedBox(width: 8),
-                      Text('${row.count}', style: theme.textTheme.labelLarge),
+                      Row(
+                        children: [
+                          Expanded(child: Text(row.label)),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${row.count}',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      LinearProgressIndicator(
+                        value: fraction,
+                        minHeight: 5,
+                        borderRadius: BorderRadius.zero,
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 5),
-                  LinearProgressIndicator(value: fraction),
-                ],
-              ),
-            );
-          }),
-        ],
+                );
+              }),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,11 +1,11 @@
 {
-    "name": "urban_danger",
-    "short_name": "urban_danger",
+    "name": "Urban Danger Intelligence",
+    "short_name": "Urban Danger",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#000000",
+    "description": "Verified incident intelligence for Taguig City and Pateros.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
@@ -30,6 +30,12 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
+        },
+        {
+            "src": "assets/assets/brand/urban-danger-app-icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
         }
     ]
 }

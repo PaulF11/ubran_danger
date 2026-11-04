@@ -9,7 +9,7 @@ import 'package:urban_danger/services/route_service.dart';
 
 void main() {
   test(
-    'route service posts existing endpoints and parses OSRM geometry',
+    'route service forwards walking mode and parses route ETA provenance',
     () async {
       late http.Request request;
       final client = MockClient((incoming) async {
@@ -20,6 +20,11 @@ void main() {
             'data': {
               'distanceMeters': 1200,
               'durationSeconds': 600,
+              'routeMode': 'walking',
+              'providerProfile': 'foot',
+              'durationSource': 'provider',
+              'etaDescription':
+                  'Provider-supplied pedestrian-route duration; live traffic is not included.',
               'coordinates': [
                 [121.0, 14.5],
                 [121.01, 14.51],
@@ -49,11 +54,16 @@ void main() {
       final plan = await service.fetchRoute(
         start: const LatLng(14.5, 121),
         destination: const LatLng(14.51, 121.01),
+        mode: 'walking',
       );
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(request.url.path, '/api/routes/route');
       expect(body['start']['latitude'], 14.5);
+      expect(body['mode'], 'walking');
       expect(plan.points.length, 2);
+      expect(plan.routeMode, 'walking');
+      expect(plan.durationSource, 'provider');
+      expect(plan.etaDescription, contains('pedestrian'));
       expect(plan.intelligence.nearbyVerifiedIncidentCount, 0);
     },
   );
@@ -87,6 +97,58 @@ void main() {
       ),
     );
   });
+
+  test(
+    'route service never treats an unqualified car route as walking',
+    () async {
+      final service = RouteService(
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'distanceMeters': 1200,
+                'durationSeconds': 600,
+                'coordinates': [
+                  [121.0, 14.5],
+                  [121.01, 14.51],
+                ],
+                'routeIntelligence': {
+                  'category': 'UNAVAILABLE',
+                  'message': 'Comparison unavailable.',
+                  'nearbyVerifiedIncidentCount': null,
+                  'severityCounts': null,
+                  'incidents': [],
+                  'usableVerifiedIncidentCount': null,
+                  'proximityThresholdMeters': null,
+                  'datasetLimited': true,
+                  'basis': 'Currently verified incidents in the system',
+                },
+              },
+            }),
+            200,
+          ),
+        ),
+        baseUri: Uri.parse('https://example.test'),
+      );
+      addTearDown(service.close);
+
+      await expectLater(
+        service.fetchRoutes(
+          start: const LatLng(14.5, 121),
+          destination: const LatLng(14.51, 121.01),
+          mode: 'walking',
+        ),
+        throwsA(
+          isA<RouteException>().having(
+            (error) => error.message,
+            'message',
+            contains('did not confirm a walking route'),
+          ),
+        ),
+      );
+    },
+  );
 
   test(
     'route service parses OSRM alternatives and recommendation metadata',

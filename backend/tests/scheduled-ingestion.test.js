@@ -218,6 +218,7 @@ test("successful ingestion reports results and releases the MySQL lock", async (
   );
   assert.equal(pool.released, 1);
   assert.match(logger.entries.join("\n"), /inserted=1/);
+  assert.match(logger.entries.join("\n"), /sources_failed=0/);
 });
 
 test("empty collection completes without persistence and logs its category", async () => {

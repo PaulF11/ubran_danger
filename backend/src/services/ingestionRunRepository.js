@@ -9,6 +9,9 @@ const COUNTER_COLUMNS = [
   "duplicate_count",
   "inserted_count",
   "error_count",
+  "articles_skipped",
+  "gemini_requests",
+  "rate_limit_count",
 ];
 
 function safeCount(value) {
@@ -16,10 +19,10 @@ function safeCount(value) {
   return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
 }
 
-async function startRun(connection, startedAt) {
+async function startRun(connection, startedAt, runSource = "SCHEDULED") {
   const [result] = await connection.query(
-    "INSERT INTO ingestion_runs (started_at, status) VALUES (?, 'RUNNING')",
-    [startedAt],
+    "INSERT INTO ingestion_runs (started_at, status, run_source) VALUES (?, 'RUNNING', ?)",
+    [startedAt, runSource],
   );
   return result.insertId;
 }
@@ -33,6 +36,7 @@ async function finishRun(connection, id, run) {
          articles_prefiltered = ?, articles_processed = ?,
          candidates_found = ?, verified_count = ?, rejected_count = ?,
          duplicate_count = ?, inserted_count = ?, error_count = ?,
+         articles_skipped = ?, gemini_requests = ?, rate_limit_count = ?,
          duration_ms = ?, error_message = ?
      WHERE id = ?`,
     [

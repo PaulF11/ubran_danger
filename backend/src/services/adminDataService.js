@@ -1,16 +1,11 @@
 const pool = require("../config/database");
 const {
   TAGUIG_BARANGAY_PARAMS,
-  TAGUIG_BARANGAY_SQL,
 } = require("../constants/taguigBarangays");
-
-const VERIFIED_SCOPE = `incidents.verification_status = 'VERIFIED'
-  AND incidents.city = 'Taguig City'
-  AND incidents.source_name IS NOT NULL
-  AND incidents.source_url IS NOT NULL
-  AND incidents.verification_method IS NOT NULL
-  AND incidents.last_verified_at IS NOT NULL
-  AND (locations.barangay IS NULL OR ${TAGUIG_BARANGAY_SQL})`;
+const {
+  VERIFIED_INCIDENT_SCOPE,
+} = require("../constants/verifiedIncidentScope");
+const { parseCollectionTargetUrls } = require("./sourceCollectorService");
 
 const INCIDENT_SELECT = `SELECT
     incidents.id,
@@ -36,13 +31,15 @@ const INCIDENT_SELECT = `SELECT
   LEFT JOIN locations ON incidents.location_id = locations.id`;
 
 const RUN_COLUMNS = `id, started_at AS startedAt, completed_at AS completedAt,
-  status, sources_checked AS sourcesChecked,
+  status, run_source AS runSource, sources_checked AS sourcesChecked,
   articles_collected AS articlesCollected,
   articles_prefiltered AS articlesPrefiltered,
   articles_processed AS articlesProcessed,
   candidates_found AS candidatesFound, verified_count AS verifiedCount,
   rejected_count AS rejectedCount, duplicate_count AS duplicateCount,
   inserted_count AS insertedCount, error_count AS errorCount,
+  articles_skipped AS articlesSkipped, gemini_requests AS geminiRequests,
+  rate_limit_count AS rateLimitCount,
   duration_ms AS durationMs, error_message AS errorMessage`;
 
 function countValue(value) {
@@ -89,7 +86,7 @@ function createAdminDataService({
         `SELECT COUNT(*) AS total,
           SUM(incidents.created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)) AS recent
          FROM incidents LEFT JOIN locations ON incidents.location_id = locations.id
-         WHERE ${VERIFIED_SCOPE}`,
+         WHERE ${VERIFIED_INCIDENT_SCOPE}`,
         TAGUIG_BARANGAY_PARAMS,
       ),
       query(
@@ -97,14 +94,14 @@ function createAdminDataService({
          FROM incidents JOIN incident_categories
            ON incidents.category_id = incident_categories.id
          LEFT JOIN locations ON incidents.location_id = locations.id
-         WHERE ${VERIFIED_SCOPE}
+         WHERE ${VERIFIED_INCIDENT_SCOPE}
          GROUP BY incident_categories.name ORDER BY count DESC, label ASC`,
         TAGUIG_BARANGAY_PARAMS,
       ),
       query(
         `SELECT incidents.severity AS label, COUNT(*) AS count
          FROM incidents LEFT JOIN locations ON incidents.location_id = locations.id
-         WHERE ${VERIFIED_SCOPE}
+         WHERE ${VERIFIED_INCIDENT_SCOPE}
          GROUP BY incidents.severity ORDER BY incidents.severity`,
         TAGUIG_BARANGAY_PARAMS,
       ),
@@ -112,7 +109,7 @@ function createAdminDataService({
         `SELECT COALESCE(locations.barangay, 'Location not reported') AS label,
           COUNT(*) AS count
          FROM incidents LEFT JOIN locations ON incidents.location_id = locations.id
-         WHERE ${VERIFIED_SCOPE}
+         WHERE ${VERIFIED_INCIDENT_SCOPE}
          GROUP BY locations.barangay ORDER BY count DESC, label ASC`,
         TAGUIG_BARANGAY_PARAMS,
       ),
@@ -146,7 +143,7 @@ function createAdminDataService({
     const page = pageValue(filters.page, 1, 1000000);
     const limit = pageValue(filters.limit, 25, 100);
     const offset = (page - 1) * limit;
-    const where = [VERIFIED_SCOPE];
+    const where = [VERIFIED_INCIDENT_SCOPE];
     const parameters = [...TAGUIG_BARANGAY_PARAMS];
     for (const [key, clause] of [
       ["category", "incident_categories.name = ?"],
@@ -204,7 +201,7 @@ function createAdminDataService({
 
   async function getIncident(id) {
     const rows = await query(
-      `${INCIDENT_SELECT} WHERE ${VERIFIED_SCOPE} AND incidents.id = ? LIMIT 1`,
+      `${INCIDENT_SELECT} WHERE ${VERIFIED_INCIDENT_SCOPE} AND incidents.id = ? LIMIT 1`,
       [...TAGUIG_BARANGAY_PARAMS, id],
     );
     return rows[0] || null;
@@ -214,13 +211,27 @@ function createAdminDataService({
     const page = pageValue(filters.page, 1, 1000000);
     const limit = pageValue(filters.limit, 25, 100);
     const offset = (page - 1) * limit;
+    const conditions = [];
+    const parameters = [];
+    if (["MANUAL", "SCHEDULED"].includes(filters.source)) {
+      conditions.push("run_source = ?");
+      parameters.push(filters.source);
+    }
+    if (/^\d+$/.test(String(filters.afterId || ""))) {
+      conditions.push("id > ?");
+      parameters.push(filters.afterId);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const [items, totals] = await Promise.all([
       query(
         `SELECT ${RUN_COLUMNS} FROM ingestion_runs
-         ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?`,
-        [limit, offset],
+         ${where} ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?`,
+        [...parameters, limit, offset],
       ),
-      query("SELECT COUNT(*) AS total FROM ingestion_runs"),
+      query(
+        `SELECT COUNT(*) AS total FROM ingestion_runs ${where}`,
+        parameters,
+      ),
     ]);
     return { items, page, limit, total: countValue(totals[0]?.total) };
   }
@@ -234,30 +245,17 @@ function createAdminDataService({
   }
 
   function getSources() {
-    const hosts = (
-      environment.TRUSTED_SOURCE_HOSTS || "taguig.gov.ph,pnp.gov.ph"
-    )
-      .split(",")
-      .map((host) => host.trim().toLowerCase())
-      .filter(Boolean);
-    const seedsByHost = new Map();
-    for (const seed of (environment.TRUSTED_SOURCE_SEED_URLS || "").split(
-      ",",
-    )) {
-      try {
-        const url = new URL(seed.trim());
-        const seeds = seedsByHost.get(url.hostname) || [];
-        seeds.push(url.toString());
-        seedsByHost.set(url.hostname, seeds);
-      } catch {
-        continue;
-      }
-    }
-    return hosts.map((host) => ({
-      name: host,
-      domain: host,
+    const namesByHost = new Map([
+      ["www.gmanetwork.com", "GMA News"],
+      ["news.tv5.com.ph", "News5 / TV5"],
+    ]);
+    return parseCollectionTargetUrls(
+      environment.SOURCE_COLLECTION_TARGET_URLS,
+    ).map((url) => ({
+      name: namesByHost.get(url.hostname.toLowerCase()) || url.hostname,
+      domain: url.hostname.toLowerCase(),
       enabled: true,
-      seedUrls: seedsByHost.get(host) || [],
+      seedUrls: [url.toString()],
       latestCollectionAt: null,
       articlesCollected: null,
       activityAvailable: false,
@@ -318,4 +316,8 @@ function createAdminDataService({
   };
 }
 
-module.exports = { createAdminDataService, INCIDENT_SELECT, VERIFIED_SCOPE };
+module.exports = {
+  createAdminDataService,
+  INCIDENT_SELECT,
+  VERIFIED_SCOPE: VERIFIED_INCIDENT_SCOPE,
+};

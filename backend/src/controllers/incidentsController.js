@@ -1,12 +1,30 @@
 const pool = require("../config/database");
 const {
   TAGUIG_BARANGAY_PARAMS,
-  TAGUIG_BARANGAY_SQL,
 } = require("../constants/taguigBarangays");
+const {
+  VERIFIED_INCIDENT_SCOPE,
+} = require("../constants/verifiedIncidentScope");
 
-exports.getIncidents = async (req, res) => {
-  try {
-    const [incidents] = await pool.query(
+function createIncidentsController({ database = pool } = {}) {
+  return {
+    getIncidents: async (req, res) => {
+      try {
+    const view = typeof req.query.view === "string" ? req.query.view : "recent";
+    if (!["recent", "historical", "all"].includes(view)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid incident feed view.",
+      });
+    }
+    const dateFilter =
+      view === "recent"
+        ? "AND incidents.incident_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)"
+        : view === "historical"
+          ? "AND incidents.incident_date < DATE_SUB(CURDATE(), INTERVAL 90 DAY)"
+          : "";
+
+    const [incidents] = await database.query(
       `SELECT
         incidents.id,
         incident_categories.name AS category_name,
@@ -44,22 +62,24 @@ exports.getIncidents = async (req, res) => {
         ON incidents.category_id = incident_categories.id
       LEFT JOIN locations
         ON incidents.location_id = locations.id
-      WHERE incidents.verification_status = 'VERIFIED'
-        AND incidents.city = 'Taguig City'
-        AND incidents.source_name IS NOT NULL
-        AND incidents.source_url IS NOT NULL
-        AND incidents.verification_method IS NOT NULL
-        AND incidents.last_verified_at IS NOT NULL
-        AND (locations.barangay IS NULL OR ${TAGUIG_BARANGAY_SQL})
-      ORDER BY incidents.incident_date DESC`,
+      WHERE ${VERIFIED_INCIDENT_SCOPE}
+        ${dateFilter}
+      ORDER BY incidents.incident_date DESC, incidents.id DESC`,
       TAGUIG_BARANGAY_PARAMS,
     );
 
     return res.json({ success: true, data: incidents });
-  } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Failed to retrieve incidents" });
-  }
+      } catch (error) {
+        console.error(error);
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to retrieve incidents" });
+      }
+    },
+  };
+}
+
+module.exports = {
+  ...createIncidentsController(),
+  createIncidentsController,
 };

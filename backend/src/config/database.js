@@ -1,5 +1,32 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const mysql = require("mysql2/promise");
 require("dotenv").config();
+
+const bundledCaCertificate = fs.readFileSync(
+  path.join(__dirname, "aiven-project-ca.pem"),
+  "utf8",
+);
+
+function getTlsSetting() {
+  const host = (process.env.DB_HOST || "127.0.0.1").trim().toLowerCase();
+  const isLocalHost = ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(host);
+
+  if (isLocalHost || process.env.DB_TLS === "false") {
+    return false;
+  }
+
+  const tlsConfig = {
+    rejectUnauthorized: true,
+  };
+
+  const caCertificate = (process.env.DB_SSL_CA || bundledCaCertificate).trim();
+  if (caCertificate) {
+    tlsConfig.ca = caCertificate;
+  }
+
+  return tlsConfig;
+}
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -7,6 +34,7 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  ssl: getTlsSetting(),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

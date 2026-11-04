@@ -1,4 +1,4 @@
-CREATE TABLE ingestion_runs (
+CREATE TABLE IF NOT EXISTS ingestion_runs (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     started_at DATETIME(3) NOT NULL,
     completed_at DATETIME(3) NULL,

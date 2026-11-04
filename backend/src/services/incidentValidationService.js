@@ -4,6 +4,7 @@ const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
 const TAGUIG_SET = new Set(
   TAGUIG_BARANGAYS.map((barangay) => barangay.toLowerCase()),
 );
+const ALLOWED_CITY_NAMES = new Set(["taguig city", "pateros"]);
 const CATEGORY_SET = new Set([
   "theft",
   "robbery",
@@ -11,18 +12,16 @@ const CATEGORY_SET = new Set([
   "vandalism",
   "other",
 ]);
-const DEFAULT_TRUSTED_HOSTS = [
-  "taguig.gov.ph",
-  "pnp.gov.ph",
-  "ncrpo.pnp.gov.ph",
-  "manilastandard.net",
-  "philstar.com",
-  "tribune.net.ph",
-  "mb.com.ph",
+const DEFAULT_TRUSTED_HOSTS = ["gmanetwork.com", "news.tv5.com.ph"];
+const APPROVED_TRUSTED_HOSTS = [
   "gmanetwork.com",
-  "abs-cbn.com",
+  "news.tv5.com.ph",
+  "news.google.com",
   "pna.gov.ph",
-  "inquirer.net",
+  "philstar.com",
+  "manilatimes.net",
+  "mb.com.ph",
+  "cnnphilippines.com",
 ];
 const GEOCODING_HOSTS = ["openstreetmap.org", "osm.org"];
 
@@ -35,7 +34,11 @@ function trustedHosts() {
   const configured = (process.env.TRUSTED_SOURCE_HOSTS || "")
     .split(",")
     .map((host) => host.trim().toLowerCase())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((host) =>
+      APPROVED_TRUSTED_HOSTS.includes(host) ||
+      APPROVED_TRUSTED_HOSTS.some((allowed) => host.endsWith(`.${allowed}`)),
+    );
   return new Set([...DEFAULT_TRUSTED_HOSTS, ...configured]);
 }
 
@@ -98,10 +101,10 @@ function validateCandidate(candidate = {}) {
   if (!CATEGORY_SET.has(category.toLowerCase())) {
     errors.push("Category must match an existing incident category.");
   }
-  if (city.toLowerCase() !== "taguig city") {
-    errors.push("City must be explicitly identified as Taguig City.");
+  if (!ALLOWED_CITY_NAMES.has(city.toLowerCase())) {
+    errors.push("City must be explicitly identified as Taguig City or Pateros.");
   }
-  if (barangay && !TAGUIG_SET.has(barangay.toLowerCase())) {
+  if (city.toLowerCase() === "taguig city" && barangay && !TAGUIG_SET.has(barangay.toLowerCase())) {
     errors.push("Barangay must be within Taguig City.");
   }
   if (!barangay && !locationDescription) {
@@ -159,8 +162,14 @@ function validateCandidate(candidate = {}) {
       "Reviewed source evidence for city, date, location, and event facts is required.",
     );
   } else {
-    if (!/\btaguig\b/i.test(evidenceCity)) {
-      errors.push("Source evidence does not identify Taguig City.");
+    const normalizedEvidenceCity = evidenceCity.toLowerCase();
+    const supportedEvidenceCity =
+      normalizedEvidenceCity.includes("taguig") ||
+      normalizedEvidenceCity.includes("pateros");
+    if (!supportedEvidenceCity) {
+      errors.push(
+        "Source evidence does not identify a supported municipality (Taguig City or Pateros).",
+      );
     }
     if (dateOnly(evidenceDate) !== dateOnly(incidentDate)) {
       errors.push(

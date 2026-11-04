@@ -4,12 +4,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:urban_danger/main.dart';
 
 void main() {
+  testWidgets('wide screens use the desktop navigation rail', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1024, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const UrbanDangerApp());
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+  });
+
   testWidgets('Urban Danger app shows the home screen and navigation labels', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const UrbanDangerApp());
 
-    expect(find.text('Urban Danger'), findsOneWidget);
+    expect(find.text('URBAN DANGER'), findsOneWidget);
     expect(find.text('Home'), findsWidgets);
 
     await tester.tap(find.text('Incidents'));

@@ -1,4 +1,5 @@
 const { createHash, createHmac, timingSafeEqual } = require("node:crypto");
+const jwt = require("jsonwebtoken");
 
 const TOKEN_LIFETIME_SECONDS = 30 * 60;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -15,6 +16,13 @@ function equalSecret(provided, expected) {
 
 function signingKey(environment) {
   const secret = environment.ADMIN_TOKEN_SECRET;
+  return typeof secret === "string" && Buffer.byteLength(secret) >= 32
+    ? secret
+    : null;
+}
+
+function jwtSigningKey(environment) {
+  const secret = environment.JWT_SECRET;
   return typeof secret === "string" && Buffer.byteLength(secret) >= 32
     ? secret
     : null;
@@ -89,19 +97,54 @@ function createAdminAuth({ environment = process.env, now = Date.now } = {}) {
   }
 
   function authenticate(req, res, next) {
-    const secret = signingKey(environment);
     const authorization = req.get("authorization") || "";
     const [scheme, token, extra] = authorization.split(" ");
-    if (!secret) {
-      return res.status(503).json({
-        success: false,
-        message: "Admin authentication is not configured.",
-      });
-    }
     if (scheme !== "Bearer" || !token || extra) {
       return res.status(401).json({
         success: false,
         message: "Admin authentication is required.",
+      });
+    }
+
+    if (token.split(".").length === 3) {
+      const secret = jwtSigningKey(environment);
+      if (!secret) {
+        return res.status(503).json({
+          success: false,
+          message: "Admin JWT authentication is not configured.",
+        });
+      }
+      try {
+        const claims = jwt.verify(token, secret, { algorithms: ["HS256"] });
+        if (
+          typeof claims.sub !== "string" ||
+          !claims.sub ||
+          !["ADMIN", "USER"].includes(claims.role)
+        ) {
+          throw new Error("invalid_admin_token");
+        }
+        if (claims.role !== "ADMIN") {
+          return res.status(403).json({
+            success: false,
+            message: "Administrator access is required.",
+          });
+        }
+        req.user = { id: claims.sub, role: claims.role };
+        req.admin = req.user;
+        return next();
+      } catch {
+        return res.status(401).json({
+          success: false,
+          message: "Admin authentication is required.",
+        });
+      }
+    }
+
+    const secret = signingKey(environment);
+    if (!secret) {
+      return res.status(503).json({
+        success: false,
+        message: "Admin authentication is not configured.",
       });
     }
 
@@ -135,6 +178,7 @@ function createAdminAuth({ environment = process.env, now = Date.now } = {}) {
         throw new Error("invalid_admin_token");
       }
       req.admin = { username: claims.sub };
+      req.user = { username: claims.sub, role: "ADMIN" };
       return next();
     } catch {
       return res.status(401).json({

@@ -10,7 +10,8 @@ const LOCK_NAME = "urban-danger-automated-ingestion";
 
 function validateIngestionEnvironment(environment) {
   const missing = REQUIRED_ENVIRONMENT.filter(
-    (name) => typeof environment[name] !== "string" || !environment[name].trim(),
+    (name) =>
+      typeof environment[name] !== "string" || !environment[name].trim(),
   );
   if (missing.length > 0) {
     throw new Error(`missing_configuration:${missing.join(",")}`);
@@ -56,14 +57,34 @@ async function runManualIngestion({
   const startedAt = now();
   let connection;
   let runId;
+  let locked = false;
   try {
     connection = await dbPool.getConnection();
-    runId = await runHistory.startRun(connection, new Date(startedAt));
-    const result = await runPipeline();
+    runId = await runHistory.startRun(
+      connection,
+      new Date(startedAt),
+      "MANUAL",
+    );
+    const [lockRows] = await connection.query(
+      "SELECT GET_LOCK(?, 0) AS acquired",
+      [LOCK_NAME],
+    );
+    if (Number(lockRows?.[0]?.acquired) !== 1) {
+      await runHistory.finishRun(connection, runId, {
+        status: "SKIPPED",
+        completedAt: new Date(now()),
+        durationMs: Math.max(0, now() - startedAt),
+        errorMessage: "Another ingestion run was already active.",
+      });
+      return { status: "SKIPPED", category: "already_running" };
+    }
+    locked = true;
+    const result = await runPipeline({ runId, runSource: "MANUAL" });
     const sourceFailures = Number(result.sourcesFailed || 0);
     const candidateFailures = Number(result.verificationFailures || 0);
     await runHistory.finishRun(connection, runId, {
-      status: sourceFailures > 0 || candidateFailures > 0 ? "PARTIAL" : "SUCCEEDED",
+      status:
+        sourceFailures > 0 || candidateFailures > 0 ? "PARTIAL" : "SUCCEEDED",
       completedAt: new Date(now()),
       durationMs: Math.max(0, now() - startedAt),
       sources_checked: result.sourcesChecked,
@@ -76,8 +97,11 @@ async function runManualIngestion({
       duplicate_count: result.duplicates,
       inserted_count: result.insertedIncidents,
       error_count: sourceFailures + candidateFailures,
+      articles_skipped: result.articlesSkipped,
+      gemini_requests: result.geminiRequests,
+      rate_limit_count: result.rateLimitCount,
     });
-    return { status: "COMPLETED", result };
+    return { status: "COMPLETED", runId, result };
   } catch (error) {
     const category = errorCategory(error);
     if (runId !== undefined) {
@@ -96,6 +120,13 @@ async function runManualIngestion({
     logger.error(`[manual-ingestion] failed category=${category}`);
     return { status: "FAILED", category };
   } finally {
+    if (locked) {
+      try {
+        await connection.query("SELECT RELEASE_LOCK(?)", [LOCK_NAME]);
+      } catch {
+        logger.error("[manual-ingestion] failed category=lock_release");
+      }
+    }
     connection?.release();
   }
 }
@@ -104,6 +135,7 @@ async function runScheduledIngestion({
   environment = process.env,
   dbPool,
   runPipeline,
+  runSource = "SCHEDULED",
   logger = console,
   now = Date.now,
   runHistory = ingestionRunRepository,
@@ -116,7 +148,11 @@ async function runScheduledIngestion({
   let runId;
   try {
     connection = await dbPool.getConnection();
-    runId = await runHistory.startRun(connection, new Date(startedAt));
+    runId = await runHistory.startRun(
+      connection,
+      new Date(startedAt),
+      runSource,
+    );
     validateIngestionEnvironment(environment);
     const [lockRows] = await connection.query(
       "SELECT GET_LOCK(?, 0) AS acquired",
@@ -134,7 +170,7 @@ async function runScheduledIngestion({
     }
     locked = true;
 
-    const result = await runPipeline();
+    const result = await runPipeline({ runId, runSource });
     const durationMs = Math.max(0, now() - startedAt);
     const sourceFailures = Number(result.sourcesFailed || 0);
     const articleFailures = Number(result.verificationFailures || 0);
@@ -147,11 +183,11 @@ async function runScheduledIngestion({
         ? "source"
         : Number(result.articlesCollected || 0) === 0
           ? "empty_collection"
-        : articleFailures > 0
-          ? articleErrorCategory === "unexpected"
-            ? "partial_article_failure"
-            : articleErrorCategory
-          : "none";
+          : articleFailures > 0
+            ? articleErrorCategory === "unexpected"
+              ? "partial_article_failure"
+              : articleErrorCategory
+            : "none";
     const partial = sourceFailures > 0 || articleFailures > 0;
     await runHistory.finishRun(connection, runId, {
       status: partial ? "PARTIAL" : "SUCCEEDED",
@@ -167,10 +203,14 @@ async function runScheduledIngestion({
       duplicate_count: result.duplicates,
       inserted_count: result.insertedIncidents,
       error_count: sourceFailures + articleFailures,
+      articles_skipped: result.articlesSkipped,
+      gemini_requests: result.geminiRequests,
+      rate_limit_count: result.rateLimitCount,
     });
     logger.info(
       `[scheduled-ingestion] complete duration_ms=${durationMs} ` +
         `sources_checked=${Number(result.sourcesChecked || 0)} ` +
+        `sources_failed=${sourceFailures} ` +
         `articles_collected=${Number(result.articlesCollected || 0)} ` +
         `articles_processed=${Number(result.articlesProcessed || 0)} ` +
         `verified=${Number(result.verifiedCandidates || 0)} ` +
