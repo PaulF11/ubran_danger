@@ -1,3 +1,4 @@
+// File note: This file handles MainFlutterWindow.swift.
 import Cocoa
 import FlutterMacOS
 

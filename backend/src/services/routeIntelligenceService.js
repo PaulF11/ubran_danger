@@ -1,3 +1,4 @@
+// File note: This file handles routeIntelligenceService.js.
 const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
 const { TAGUIG_BARANGAYS } = require("../constants/taguigBarangays");
 

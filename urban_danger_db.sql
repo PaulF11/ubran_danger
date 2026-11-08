@@ -1,3 +1,4 @@
+-- File note: This file handles urban_danger_db.sql.
 DROP DATABASE IF EXISTS urban_danger_db;
 CREATE DATABASE urban_danger_db
   CHARACTER SET utf8mb4

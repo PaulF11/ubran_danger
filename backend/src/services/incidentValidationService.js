@@ -1,3 +1,4 @@
+// File note: This file handles incidentValidationService.js.
 const { TAGUIG_BARANGAYS } = require("../constants/taguigBarangays");
 const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
 

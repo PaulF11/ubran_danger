@@ -1,3 +1,4 @@
+// File note: This file handles build-web.js.
 const { spawnSync } = require("node:child_process");
 
 const apiBaseUrl =

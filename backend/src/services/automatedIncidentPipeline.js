@@ -1,3 +1,4 @@
+// File note: This file handles automatedIncidentPipeline.js.
 const { collectTrustedSources } = require("./sourceCollectorService");
 const { extractCandidate } = require("./incidentExtractionService");
 const { isPlausibleIndividualIncident } = require("./incidentPreFilterService");

@@ -1,3 +1,4 @@
+// File note: This file handles route_safety_summary_test.dart.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:urban_danger/models/route_plan.dart';

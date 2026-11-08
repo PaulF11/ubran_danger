@@ -1,3 +1,4 @@
+// File note: This file handles apiProxy.js.
 const PUBLIC_API_BASE_URL = "https://urbandangerintel.netlify.app";
 const FUNCTION_PATH = "/.netlify/functions/api-proxy";
 

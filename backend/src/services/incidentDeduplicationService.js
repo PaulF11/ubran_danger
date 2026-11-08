@@ -1,3 +1,4 @@
+// File note: This file handles incidentDeduplicationService.js.
 function normalizeText(value) {
   if (typeof value !== "string") return "";
   return value

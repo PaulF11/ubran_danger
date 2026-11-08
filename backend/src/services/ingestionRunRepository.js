@@ -1,3 +1,4 @@
+// File note: This file handles ingestionRunRepository.js.
 const COUNTER_COLUMNS = [
   "sources_checked",
   "articles_collected",

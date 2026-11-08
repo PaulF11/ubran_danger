@@ -1,3 +1,4 @@
+// File note: This file handles location_service.dart.
 import 'package:geolocator/geolocator.dart';
 
 enum LocationAccess { granted, denied, permanentlyDenied, servicesDisabled }

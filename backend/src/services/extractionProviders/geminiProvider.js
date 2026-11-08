@@ -1,3 +1,4 @@
+// File note: This file handles geminiProvider.js.
 const GEMINI_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.5-flash";

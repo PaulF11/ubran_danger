@@ -1,3 +1,4 @@
+// File note: This file handles location_search_service_test.dart.
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';

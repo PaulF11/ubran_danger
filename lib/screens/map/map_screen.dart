@@ -1,3 +1,4 @@
+// File note: This file handles map_screen.dart.
 import 'dart:async';
 import 'dart:math' as math;
 

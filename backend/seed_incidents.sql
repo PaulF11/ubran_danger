@@ -1,3 +1,4 @@
+-- File note: This file handles seed_incidents.sql.
 USE urban_danger_db;
 
 START TRANSACTION;

@@ -1,3 +1,4 @@
+// File note: This file handles route_plan.dart.
 import 'package:latlong2/latlong.dart';
 
 class RoutePlan {

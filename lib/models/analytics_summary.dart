@@ -1,3 +1,4 @@
+// File note: This file handles analytics_summary.dart.
 class AnalyticsSummary {
   const AnalyticsSummary({
     required this.total,

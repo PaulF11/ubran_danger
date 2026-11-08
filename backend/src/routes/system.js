@@ -1,3 +1,4 @@
+// File note: This file handles system.js.
 const express = require("express");
 const pool = require("../config/database");
 const {

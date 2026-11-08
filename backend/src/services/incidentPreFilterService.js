@@ -1,3 +1,4 @@
+// File note: This file handles incidentPreFilterService.js.
 const INCIDENT_SIGNAL =
   /\b(?:killed|shot|stabbed|arrested|robbery|robbed|assault|attacked|injured|victim|theft|vandalism|suspect|shooting|missing person|police arrest)\b/i;
 

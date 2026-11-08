@@ -1,3 +1,4 @@
+// File note: This file handles scheduledIngestionService.js.
 const REQUIRED_ENVIRONMENT = [
   "DB_HOST",
   "DB_USER",

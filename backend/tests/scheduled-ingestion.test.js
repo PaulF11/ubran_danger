@@ -1,3 +1,4 @@
+// File note: This file handles scheduled-ingestion.test.js.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");

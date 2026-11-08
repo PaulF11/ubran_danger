@@ -1,3 +1,4 @@
+// File note: This file handles api.js.
 const serverless = require("serverless-http");
 const app = require("../../backend/src/app");
 

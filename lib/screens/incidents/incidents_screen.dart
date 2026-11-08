@@ -1,3 +1,4 @@
+// File note: This file handles incidents_screen.dart.
 import 'package:flutter/material.dart';
 
 import '../../models/incident.dart';

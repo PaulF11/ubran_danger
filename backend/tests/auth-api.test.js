@@ -1,3 +1,4 @@
+// File note: This file handles auth-api.test.js.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");

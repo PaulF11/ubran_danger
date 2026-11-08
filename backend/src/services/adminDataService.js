@@ -1,3 +1,4 @@
+// File note: This file handles adminDataService.js.
 const pool = require("../config/database");
 const {
   TAGUIG_BARANGAY_PARAMS,

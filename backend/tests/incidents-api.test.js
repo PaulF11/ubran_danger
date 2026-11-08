@@ -1,3 +1,4 @@
+// File note: This file handles incidents-api.test.js.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createIncidentsController } = require("../src/controllers/incidentsController");

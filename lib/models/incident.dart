@@ -1,3 +1,4 @@
+// File note: This file handles incident.dart.
 class Incident {
   const Incident({
     required this.id,

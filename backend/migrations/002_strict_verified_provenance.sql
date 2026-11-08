@@ -1,3 +1,4 @@
+-- File note: This file handles 002_strict_verified_provenance.sql.
 USE urban_danger_db;
 
 ALTER TABLE incidents

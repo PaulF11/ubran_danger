@@ -1,3 +1,4 @@
+// File note: This file handles incidentPersistenceService.js.
 const pool = require("../config/database");
 const { findConflict, isDuplicate } = require("./incidentDeduplicationService");
 

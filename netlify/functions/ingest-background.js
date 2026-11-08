@@ -1,3 +1,4 @@
+// File note: This file handles ingest-background.js.
 const { timingSafeEqual } = require("node:crypto");
 
 function authorized(event, expected) {

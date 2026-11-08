@@ -1,3 +1,4 @@
+-- File note: This file handles 004_processed_sources_and_scan_metrics.sql.
 CREATE TABLE IF NOT EXISTS ingestion_processed_sources (
     source_url_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     source_url TEXT NOT NULL,

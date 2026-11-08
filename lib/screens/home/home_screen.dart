@@ -1,3 +1,4 @@
+// File note: This file handles home_screen.dart.
 import 'package:flutter/material.dart';
 
 import '../../models/analytics_summary.dart';

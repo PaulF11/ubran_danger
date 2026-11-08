@@ -1,3 +1,4 @@
+// File note: This file handles main.dart.
 import 'package:flutter/material.dart';
 import 'package:urban_danger/core/app_theme.dart';
 import 'package:urban_danger/screens/home/home_screen.dart';

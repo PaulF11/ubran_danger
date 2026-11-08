@@ -1,3 +1,4 @@
+// File note: This file handles netlify-api-proxy.test.js.
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {

@@ -1,3 +1,4 @@
+-- File note: This file handles 005_admin_scan_candidates.sql.
 CREATE TABLE IF NOT EXISTS admin_scan_candidates (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     ingestion_run_id BIGINT UNSIGNED NOT NULL,

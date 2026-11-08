@@ -1,3 +1,4 @@
+// File note: This file handles route_safety_summary.dart.
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 

@@ -1,3 +1,4 @@
+// File note: This file handles flutter_window.h.
 #ifndef RUNNER_FLUTTER_WINDOW_H_
 #define RUNNER_FLUTTER_WINDOW_H_
 

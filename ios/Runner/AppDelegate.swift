@@ -1,3 +1,4 @@
+// File note: This file handles AppDelegate.swift.
 import Flutter
 import UIKit
 

@@ -1,3 +1,4 @@
+// File note: This file handles auth.js.
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");

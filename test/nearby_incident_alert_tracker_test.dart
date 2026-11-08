@@ -1,3 +1,4 @@
+// File note: This file handles nearby_incident_alert_tracker_test.dart.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:urban_danger/models/incident.dart';

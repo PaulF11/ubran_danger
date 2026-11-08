@@ -1,3 +1,4 @@
+// File note: This file handles analytics.js.
 const express = require("express");
 const analyticsController = require("../controllers/analyticsController");
 

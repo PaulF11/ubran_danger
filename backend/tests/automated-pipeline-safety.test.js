@@ -1,3 +1,4 @@
+// File note: This file handles automated-pipeline-safety.test.js.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {

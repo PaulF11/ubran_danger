@@ -1,3 +1,4 @@
+// File note: This file handles App.jsx.
 import { useEffect, useState } from "react";
 
 const API_BASE = (

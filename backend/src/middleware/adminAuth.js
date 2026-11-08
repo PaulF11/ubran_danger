@@ -1,3 +1,4 @@
+// File note: This file handles adminAuth.js.
 const { createHash, createHmac, timingSafeEqual } = require("node:crypto");
 const jwt = require("jsonwebtoken");
 

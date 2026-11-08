@@ -1,3 +1,4 @@
+// File note: This file handles taguigMapBounds.js.
 const TAGUIG_MAP_BOUNDS = {
   minLatitude: 14.45,
   maxLatitude: 14.62,

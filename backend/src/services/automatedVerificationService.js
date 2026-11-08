@@ -1,3 +1,4 @@
+// File note: This file handles automatedVerificationService.js.
 const { validateCandidate } = require("./incidentValidationService");
 const { findConflict, isDuplicate } = require("./incidentDeduplicationService");
 

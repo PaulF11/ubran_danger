@@ -1,3 +1,4 @@
+// File note: This file handles local-preview-proxy.js.
 const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");

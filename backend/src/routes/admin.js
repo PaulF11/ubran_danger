@@ -1,3 +1,4 @@
+// File note: This file handles admin.js.
 const express = require("express");
 const pool = require("../config/database");
 const { createAdminAuth } = require("../middleware/adminAuth");

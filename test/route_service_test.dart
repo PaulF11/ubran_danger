@@ -1,3 +1,4 @@
+// File note: This file handles route_service_test.dart.
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,12 +10,14 @@ import 'package:urban_danger/services/route_service.dart';
 
 void main() {
   test(
+  // These tests check requests, responses, and route safety rules.
     'route service forwards walking mode and parses route ETA provenance',
     () async {
       late http.Request request;
       final client = MockClient((incoming) async {
         request = incoming;
         return http.Response(
+        // This response also checks the ETA details shown by the app.
           jsonEncode({
             'success': true,
             'data': {
@@ -70,6 +73,7 @@ void main() {
 
   test('route service reports OSRM/API calculation failure', () async {
     final service = RouteService(
+    // API errors should become the route error used by the app.
       client: MockClient(
         (_) async => http.Response(
           jsonEncode({
@@ -102,6 +106,7 @@ void main() {
     'route service never treats an unqualified car route as walking',
     () async {
       final service = RouteService(
+      // A walking request must not accept a route without walking details.
         client: MockClient(
           (_) async => http.Response(
             jsonEncode({
@@ -154,6 +159,7 @@ void main() {
     'route service parses OSRM alternatives and recommendation metadata',
     () async {
       final service = RouteService(
+      // Different route details check both the main route and the alternative.
         client: MockClient(
           (_) async => http.Response(
             jsonEncode({
@@ -225,6 +231,7 @@ void main() {
 
   test('Taguig route selection scope still rejects out-of-scope locations', () {
     expect(isWithinTaguigMapArea(const LatLng(14.5176, 121.0509)), isTrue);
+    // Routes are limited to the supported Taguig map area.
     expect(isWithinTaguigMapArea(const LatLng(14.60, 121.11)), isFalse);
   });
 }

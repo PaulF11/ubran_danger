@@ -1,3 +1,4 @@
+// File note: This file handles gemini-provider.test.js.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {

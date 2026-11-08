@@ -1,3 +1,4 @@
+// File note: This file handles RunnerTests.swift.
 import Cocoa
 import FlutterMacOS
 import XCTest

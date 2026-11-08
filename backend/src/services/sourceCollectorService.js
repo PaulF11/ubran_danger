@@ -1,3 +1,4 @@
+// File note: This file handles sourceCollectorService.js.
 const DEFAULT_COLLECTION_TARGET_URLS = [
   "https://news.google.com/rss/search?q=Taguig+City+incident",
   "https://news.google.com/rss/search?q=Pateros+incident",

@@ -1,3 +1,4 @@
+// File note: This file handles api_config.dart.
 class ApiConfig {
   const ApiConfig._();
 

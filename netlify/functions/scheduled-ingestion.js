@@ -1,3 +1,4 @@
+// File note: This file handles scheduled-ingestion.js.
 const { URL } = require("node:url");
 
 const BACKGROUND_FUNCTION_PATH = "/.netlify/functions/ingest-background";
