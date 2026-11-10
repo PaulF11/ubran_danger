@@ -1,4 +1,5 @@
 // File note: This file handles incidentValidationService.js.
+
 const { TAGUIG_BARANGAYS } = require("../constants/taguigBarangays");
 const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
 
@@ -10,6 +11,12 @@ const CATEGORY_SET = new Set([
   "theft",
   "robbery",
   "assault",
+  "shooting",
+  "drug-related",
+  "police-related",
+  "road accident",
+  "fire",
+  "law enforcement",
   "vandalism",
   "other",
 ]);

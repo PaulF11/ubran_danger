@@ -1,4 +1,5 @@
 // File note: This file handles incidents-api.test.js.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createIncidentsController } = require("../src/controllers/incidentsController");
@@ -19,8 +20,8 @@ function response() {
 }
 
 for (const [view, expectedClause] of [
-  ["recent", "DATE_SUB(CURDATE(), INTERVAL 90 DAY)"],
-  ["historical", "incidents.incident_date < DATE_SUB(CURDATE(), INTERVAL 90 DAY)"],
+  ["recent", "COALESCE(incidents.source_published_at, DATE(incidents.incident_date)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"],
+  ["historical", "COALESCE(incidents.source_published_at, DATE(incidents.incident_date)) < DATE_SUB(CURDATE(), INTERVAL 30 DAY)"],
   ["all", null],
 ]) {
   test(`incident feed ${view} applies the correct date scope`, async () => {
@@ -42,7 +43,7 @@ for (const [view, expectedClause] of [
     if (expectedClause) {
       assert.match(sql, new RegExp(expectedClause.replace(/[()[\]]/g, "\\$&")));
     } else {
-      assert.doesNotMatch(sql, /DATE_SUB\(CURDATE\(\), INTERVAL 90 DAY\)/);
+      assert.doesNotMatch(sql, /DATE_SUB\(CURDATE\(\), INTERVAL 30 DAY\)/);
     }
   });
 }

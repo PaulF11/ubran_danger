@@ -1,12 +1,12 @@
 const pool = require("../config/database");
 const routingService = require("../services/osrmRoutingService");
+const { routeProfileInfo } = routingService;
 const {
   analyzeRouteSafety,
   proximityThresholdFromEnvironment,
   recommendRoute,
   validateRouteGeometry,
 } = require("../services/routeIntelligenceService");
-const { routeProfileInfo } = require("../services/osrmRoutingService");
 const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
 const {
   TAGUIG_BARANGAY_PARAMS,

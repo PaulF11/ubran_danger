@@ -1,4 +1,5 @@
 // File note: This file handles admin_dashboard_screen.dart.
+
 import 'package:flutter/material.dart';
 
 import '../../services/admin_auth_service.dart';

@@ -1,4 +1,5 @@
 // File note: This file handles main.cc.
+
 #include "my_application.h"
 
 int main(int argc, char** argv) {

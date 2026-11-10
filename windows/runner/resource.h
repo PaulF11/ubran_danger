@@ -1,4 +1,5 @@
 // File note: This file handles resource.h.
+
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
 // Used by Runner.rc

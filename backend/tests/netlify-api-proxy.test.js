@@ -1,4 +1,5 @@
 // File note: This file handles netlify-api-proxy.test.js.
+
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
@@ -26,10 +27,10 @@ test("admin API proxy forwards API requests to the fixed public site", async () 
     headers: { accept: "application/json" },
   });
 
-  assert.equal(PUBLIC_API_BASE_URL, "https://urbandangerintel.netlify.app");
+  assert.equal(PUBLIC_API_BASE_URL, "https://urbandanger.netlify.app");
   assert.equal(
     request.url,
-    "https://urbandangerintel.netlify.app/api/categories?active=true",
+    "https://urbandanger.netlify.app/api/categories?active=true",
   );
   assert.equal(request.method, "GET");
   assert.equal(response.statusCode, 200);
@@ -62,7 +63,7 @@ test("admin API proxy preserves authorization, method, and request body", async 
 
   assert.equal(
     request.url,
-    "https://urbandangerintel.netlify.app/api/admin/login",
+    "https://urbandanger.netlify.app/api/admin/login",
   );
   assert.equal(request.method, "POST");
   assert.equal(request.headers.authorization, "Bearer session-token");

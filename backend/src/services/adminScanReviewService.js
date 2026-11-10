@@ -1,4 +1,5 @@
 // File note: This file handles adminScanReviewService.js.
+
 const { createHash } = require("node:crypto");
 const pool = require("../config/database");
 const {

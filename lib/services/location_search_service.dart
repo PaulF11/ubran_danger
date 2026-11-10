@@ -1,4 +1,5 @@
 // File note: This file handles location_search_service.dart.
+
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;

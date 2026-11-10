@@ -5,7 +5,7 @@
   command = "npm run build:web"
 
 [build.environment]
-  API_BASE_URL = "https://urbandangerintel.netlify.app"
+  API_BASE_URL = "https://urbandanger.netlify.app"
 
 [functions."scheduled-ingestion"]
   schedule = "0 */6 * * *"

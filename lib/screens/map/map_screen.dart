@@ -1,4 +1,5 @@
 // File note: This file handles map_screen.dart.
+
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -65,6 +66,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool _tileError = false;
   int _tileRetry = 0;
   _MapMode _mode = _MapMode.incidents;
+  bool _routePanelExpanded = false;
   LatLng? _routeStart;
   LatLng? _routeDestination;
   String _routeTravelMode = 'car';
@@ -170,6 +172,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       );
     }
+
   }
 
   Future<void> _loadIncidents() async {
@@ -301,6 +304,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Widget _buildTopControls(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 500;
     final filterCount = [
       _filters.category,
       _filters.severity,
@@ -317,9 +321,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         prefixIcon: const Icon(Icons.search),
         border: InputBorder.none,
         isDense: true,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: isCompact ? 8 : 14,
+        ),
         suffixIcon: _query.isEmpty
-            ? null
-            : IconButton(
+          ? null
+          : IconButton(
                 tooltip: 'Clear search',
                 onPressed: () {
                   _searchController.clear();
@@ -334,6 +342,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         tooltip: filterCount == 0
             ? 'Filter incidents'
             : 'Filters active: $filterCount',
+        visualDensity: isCompact
+            ? VisualDensity.compact
+            : VisualDensity.standard,
+        constraints: isCompact
+            ? const BoxConstraints.tightFor(width: 40, height: 40)
+            : null,
         onPressed: _openFilters,
         icon: Badge(
           isLabelVisible: filterCount > 0,
@@ -345,6 +359,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         tooltip: _showDensity
             ? 'Hide incident density'
             : 'Show incident density',
+        visualDensity: isCompact
+            ? VisualDensity.compact
+            : VisualDensity.standard,
+        constraints: isCompact
+            ? const BoxConstraints.tightFor(width: 40, height: 40)
+            : null,
         onPressed: () => setState(() => _showDensity = !_showDensity),
         color: _showDensity ? theme.colorScheme.primary : null,
         icon: const Icon(Icons.blur_on_outlined),
@@ -353,6 +373,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         tooltip: _locationTracking && _currentPosition != null
             ? 'Center on current location'
             : 'Return to Taguig view',
+        visualDensity: isCompact
+            ? VisualDensity.compact
+            : VisualDensity.standard,
+        constraints: isCompact
+            ? const BoxConstraints.tightFor(width: 40, height: 40)
+            : null,
         onPressed: () {
           final position = _currentPosition;
           if (_locationTracking && position != null) {
@@ -383,7 +409,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 6 : 10,
+              vertical: isCompact ? 5 : 8,
+            ),
             child: Column(
               children: [
                 LayoutBuilder(
@@ -392,9 +421,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       return Column(
                         children: [
                           searchField,
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: actionButtons,
+                          SizedBox(
+                            height: 40,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: actionButtons,
+                            ),
                           ),
                         ],
                       );
@@ -409,9 +441,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 ),
                 const Divider(height: 1),
                 Padding(
-                  padding: const EdgeInsets.only(top: 5),
-                  child: SegmentedButton<_MapMode>(
+                  padding: EdgeInsets.only(top: isCompact ? 3 : 5),
+                  child: SizedBox(
+                    height: isCompact ? 40 : null,
+                    child: SegmentedButton<_MapMode>(
                     showSelectedIcon: false,
+                    style: isCompact
+                        ? const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: WidgetStatePropertyAll(
+                              EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                          )
+                        : null,
                     segments: const [
                       ButtonSegment(
                         value: _MapMode.incidents,
@@ -427,16 +470,27 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     selected: {_mode},
                     onSelectionChanged: (selection) =>
                         _setMode(selection.first),
+                    ),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.only(top: 7),
+                  padding: EdgeInsets.only(top: isCompact ? 4 : 7),
                   child: Wrap(
                     alignment: WrapAlignment.center,
                     spacing: 8,
                     runSpacing: 4,
                     children: [
                       OutlinedButton.icon(
+                        style: isCompact
+                            ? OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                              )
+                            : null,
                         onPressed: _locationTracking
                             ? _disableLocation
                             : _enableLocation,
@@ -450,6 +504,16 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       TextButton.icon(
+                        style: isCompact
+                            ? TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                              )
+                            : null,
                         onPressed: _nearbyAlertsEnabled
                             ? _disableNearbyAlerts
                             : _enableNearbyAlerts,
@@ -913,6 +977,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final theme = Theme.of(context);
     final canAnalyze = _routeStart != null && _routeDestination != null;
     final screenSize = MediaQuery.sizeOf(context);
+    final isCompact = screenSize.width < 500;
     const routeModes = [
       ('car', 'Car', Icons.directions_car_outlined),
       ('motorcycle', 'Motorcycle', Icons.two_wheeler_outlined),
@@ -971,6 +1036,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               IconButton(
                 tooltip:
                     'Enter ${label == 'start' ? 'start' : 'destination'} coordinates',
+                visualDensity: isCompact
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
                 onPressed: () => _editRouteEndpoint(isStart: label == 'start'),
                 icon: const Icon(Icons.edit_location_alt_outlined),
               ),
@@ -1026,11 +1094,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          'Route analysis',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Route analysis',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (isCompact)
+              IconButton(
+                tooltip: 'Collapse route analysis',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _routePanelExpanded = false),
+                icon: const Icon(Icons.keyboard_arrow_down),
+              ),
+          ],
         ),
         endpointFields,
         const SizedBox(height: 10),
@@ -1047,6 +1128,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               ChoiceChip(
                 avatar: Icon(mode.$3, size: 18),
                 label: Text(mode.$2),
+                visualDensity: isCompact
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
+                padding: isCompact
+                    ? const EdgeInsets.symmetric(horizontal: 6)
+                    : null,
                 selected: _routeTravelMode == mode.$1,
                 onSelected: _routeLoading
                     ? null
@@ -1144,8 +1231,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             label: const Text('Analyze route'),
           );
     final routePanel = screenSize.width < 500
-        ? SizedBox(
-            height: screenSize.height * 0.46,
+        ? _routePanelExpanded
+            ? SizedBox(
+            height: screenSize.height * 0.42,
             child: Card(
               child: Column(
                 children: [
@@ -1163,6 +1251,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               ),
             ),
           )
+            : _buildCollapsedRoutePanel(context)
         : Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -1189,9 +1278,44 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: 680,
-              maxHeight: screenSize.height * 0.46,
+              maxHeight: screenSize.height * (isCompact ? 0.42 : 0.46),
             ),
             child: routePanel,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCollapsedRoutePanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasEndpoints = _routeStart != null || _routeDestination != null;
+    return Material(
+      color: theme.colorScheme.surface.withValues(alpha: 0.96),
+      elevation: 5,
+      child: InkWell(
+        onTap: () => setState(() => _routePanelExpanded = true),
+        child: SizedBox(
+          height: 52,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              children: [
+                const Icon(Icons.route_outlined, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    hasEndpoints
+                        ? 'Route ready to configure'
+                        : 'Plan a safer route',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.keyboard_arrow_up, size: 22),
+              ],
+            ),
           ),
         ),
       ),
@@ -1332,6 +1456,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _invalidateRouteRequest();
     setState(() {
       _mode = mode;
+      _routePanelExpanded = false;
       _routeStart =
           mode == _MapMode.route &&
               position != null &&

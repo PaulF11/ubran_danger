@@ -1,4 +1,5 @@
 // File note: This file handles incidentsController.js.
+
 const pool = require("../config/database");
 const {
   TAGUIG_BARANGAY_PARAMS,
@@ -20,9 +21,9 @@ function createIncidentsController({ database = pool } = {}) {
     }
     const dateFilter =
       view === "recent"
-        ? "AND incidents.incident_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)"
+        ? "AND COALESCE(incidents.source_published_at, DATE(incidents.incident_date)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"
         : view === "historical"
-          ? "AND incidents.incident_date < DATE_SUB(CURDATE(), INTERVAL 90 DAY)"
+          ? "AND COALESCE(incidents.source_published_at, DATE(incidents.incident_date)) < DATE_SUB(CURDATE(), INTERVAL 30 DAY)"
           : "";
 
     const [incidents] = await database.query(
@@ -65,7 +66,8 @@ function createIncidentsController({ database = pool } = {}) {
         ON incidents.location_id = locations.id
       WHERE ${VERIFIED_INCIDENT_SCOPE}
         ${dateFilter}
-      ORDER BY incidents.incident_date DESC, incidents.id DESC`,
+      ORDER BY COALESCE(incidents.source_published_at, DATE(incidents.incident_date)) DESC,
+        incidents.incident_date DESC, incidents.id DESC`,
       TAGUIG_BARANGAY_PARAMS,
     );
 

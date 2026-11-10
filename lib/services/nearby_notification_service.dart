@@ -1,4 +1,5 @@
 // File note: This file handles nearby_notification_service.dart.
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:url_launcher/url_launcher.dart';

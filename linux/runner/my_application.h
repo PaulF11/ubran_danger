@@ -1,4 +1,5 @@
 // File note: This file handles my_application.h.
+
 #ifndef FLUTTER_MY_APPLICATION_H_
 #define FLUTTER_MY_APPLICATION_H_
 

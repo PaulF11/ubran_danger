@@ -1,4 +1,5 @@
 // File note: This file handles health-db.test.js.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const pool = require("../src/config/database");

@@ -1,4 +1,5 @@
 -- File note: This file handles 003_ingestion_runs.sql.
+
 CREATE TABLE IF NOT EXISTS ingestion_runs (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     started_at DATETIME(3) NOT NULL,

@@ -1,4 +1,5 @@
 // File note: This file handles server.js.
+
 require("dotenv").config();
 const app = require("./app");
 

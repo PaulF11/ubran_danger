@@ -1,4 +1,5 @@
 // File note: This file handles incidentExtractionService.js.
+
 const developmentLabeledProvider = require("./extractionProviders/developmentLabeledProvider");
 const geminiProvider = require("./extractionProviders/geminiProvider");
 

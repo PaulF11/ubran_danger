@@ -1,4 +1,5 @@
 // File note: This file handles map_route_modes_test.dart.
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -52,6 +53,10 @@ void main() {
       await pumpRouteFrames(tester);
       await tester.tap(find.text('Route analysis').first);
       await pumpRouteFrames(tester);
+      if (width < 500) {
+        await tester.tap(find.text('Plan a safer route'));
+        await pumpRouteFrames(tester);
+      }
 
       final modeBounds = [
         for (final mode in ['Car', 'Motorcycle', 'Walk', 'Bicycle', 'Truck'])
@@ -122,6 +127,8 @@ void main() {
       );
       await pumpRouteFrames(tester);
       await tester.tap(find.text('Route analysis').first);
+      await pumpRouteFrames(tester);
+      await tester.tap(find.text('Plan a safer route'));
       await pumpRouteFrames(tester);
 
       for (final tooltip in [

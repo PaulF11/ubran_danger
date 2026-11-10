@@ -1,4 +1,5 @@
 // File note: This file handles admin-scan.test.js.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createAdminScanService } = require("../src/services/adminScanService");

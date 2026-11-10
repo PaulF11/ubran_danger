@@ -1,12 +1,13 @@
 // File note: This file handles build-web.js.
+
 const { spawnSync } = require("node:child_process");
 
 const apiBaseUrl =
-  process.env.API_BASE_URL || "https://urbandangerintel.netlify.app";
+  process.env.API_BASE_URL || "https://urbandanger.netlify.app";
 const parsedApiBaseUrl = new URL(apiBaseUrl);
 if (
   parsedApiBaseUrl.protocol !== "https:" ||
-  parsedApiBaseUrl.origin !== "https://urbandangerintel.netlify.app"
+  parsedApiBaseUrl.origin !== "https://urbandanger.netlify.app"
 ) {
   throw new Error("API_BASE_URL must be the production public site origin.");
 }

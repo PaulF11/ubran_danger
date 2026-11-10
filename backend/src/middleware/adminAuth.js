@@ -1,4 +1,5 @@
 // File note: This file handles adminAuth.js.
+
 const { createHash, createHmac, timingSafeEqual } = require("node:crypto");
 const jwt = require("jsonwebtoken");
 
@@ -70,10 +71,11 @@ function createAdminAuth({ environment = process.env, now = Date.now } = {}) {
       });
     }
 
-    const { username, password } = req.body || {};
+    const { username, email, password } = req.body || {};
+    const submittedUsername = username ?? email;
     const validUsername =
-      typeof username === "string" &&
-      equalSecret(username, environment.ADMIN_USERNAME);
+      typeof submittedUsername === "string" &&
+      equalSecret(submittedUsername, environment.ADMIN_USERNAME);
     const validPassword =
       typeof password === "string" &&
       equalSecret(password, environment.ADMIN_PASSWORD);

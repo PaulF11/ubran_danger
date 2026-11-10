@@ -1,4 +1,5 @@
 // File note: This file handles incident_model_test.dart.
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:urban_danger/core/taguig_region.dart';

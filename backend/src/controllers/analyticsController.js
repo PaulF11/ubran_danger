@@ -1,4 +1,5 @@
 // File note: This file handles analyticsController.js.
+
 const pool = require("../config/database");
 const { TAGUIG_BARANGAY_PARAMS } = require("../constants/taguigBarangays");
 const { VERIFIED_INCIDENT_SCOPE } = require("../constants/verifiedIncidentScope");

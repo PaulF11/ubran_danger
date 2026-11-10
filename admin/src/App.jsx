@@ -1,4 +1,5 @@
 // File note: This file handles App.jsx.
+
 import { useEffect, useState } from "react";
 
 const API_BASE = (
@@ -34,7 +35,13 @@ async function request(path, token, options = {}) {
 }
 
 function App() {
-  const [token, setToken] = useState(null);
+  const [token, setToken] = useState(() => {
+    try {
+      return window.sessionStorage.getItem("urban-danger-admin-token");
+    } catch {
+      return null;
+    }
+  });
   const [view, setView] = useState("dashboard");
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -58,7 +65,7 @@ function App() {
     source: "",
     q: "",
   });
-  const [login, setLogin] = useState({ username: "", password: "" });
+  const [login, setLogin] = useState({ email: "", password: "" });
 
   useEffect(() => {
     if (!token) return undefined;
@@ -76,7 +83,10 @@ function App() {
       .catch((failure) => {
         if (!active) return;
         setError(failure.message);
-        if (failure.message.includes("authentication")) setToken(null);
+        if (failure.message.includes("authentication")) {
+          setToken(null);
+          window.sessionStorage.removeItem("urban-danger-admin-token");
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -216,7 +226,8 @@ function App() {
         body: JSON.stringify(login),
       });
       setToken(result.token);
-      setLogin({ username: "", password: "" });
+      window.sessionStorage.setItem("urban-danger-admin-token", result.token);
+      setLogin({ email: "", password: "" });
     } catch (failure) {
       setError(failure.message);
     } finally {
@@ -342,14 +353,15 @@ function App() {
           <h1>System access</h1>
           <p className="muted">Restricted to authorized administrators.</p>
           <label>
-            Username
+            Username or email
             <input
+              type="text"
               autoComplete="username"
-              value={login.username}
+              value={login.email}
               onChange={(event) =>
                 setLogin((current) => ({
                   ...current,
-                  username: event.target.value,
+                  email: event.target.value,
                 }))
               }
               required
@@ -375,7 +387,7 @@ function App() {
             {loading ? "Signing in…" : "Sign in"} <span>→</span>
           </button>
           <p className="fine-print">
-            Your session is short-lived and held only in memory.
+            Your session is short-lived and held only for this browser tab.
           </p>
         </form>
       </main>
@@ -419,6 +431,7 @@ function App() {
             onClick={() => {
               setToken(null);
               setData(null);
+              window.sessionStorage.removeItem("urban-danger-admin-token");
             }}
           >
             Sign out

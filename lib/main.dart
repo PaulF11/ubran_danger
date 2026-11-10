@@ -1,4 +1,5 @@
 // File note: This file handles main.dart.
+
 import 'package:flutter/material.dart';
 import 'package:urban_danger/core/app_theme.dart';
 import 'package:urban_danger/screens/home/home_screen.dart';
@@ -54,30 +55,36 @@ class _UrbanDangerHomePageState extends State<UrbanDangerHomePage> {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 900;
+    final isCompact = MediaQuery.sizeOf(context).width < 500;
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: isCompact ? 56 : null,
+        titleSpacing: isCompact ? 12 : null,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: isCompact ? 32 : 38,
+              height: isCompact ? 32 : 38,
               decoration: const BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.rectangle,
               ),
               alignment: Alignment.center,
-              child: const UrbanDangerBrandMark(color: Colors.black, size: 29),
+              child: UrbanDangerBrandMark(
+                color: Colors.black,
+                size: isCompact ? 24 : 29,
+              ),
             ),
-            const SizedBox(width: 10),
-            const Column(
+            SizedBox(width: isCompact ? 8 : 10),
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   'URBAN DANGER',
                   style: TextStyle(
-                    fontSize: 15,
+                    fontSize: isCompact ? 14 : 15,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.05,
                   ),
@@ -160,6 +167,7 @@ class _UrbanDangerHomePageState extends State<UrbanDangerHomePage> {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: NavigationBar(
+                  height: isCompact ? 64 : null,
                   selectedIndex: _selectedIndex,
                   onDestinationSelected: _onItemTapped,
                   destinations: const [

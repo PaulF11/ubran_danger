@@ -1,4 +1,5 @@
 // File note: This file handles local-preview-proxy.js.
+
 const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
@@ -7,7 +8,7 @@ const path = require("node:path");
 const HOST = "127.0.0.1";
 const PORT = 5190;
 const BUILD_ROOT = path.resolve(__dirname, "..", "build", "web");
-const API_ORIGIN = "https://urbandangerintel.netlify.app";
+const API_ORIGIN = "https://urbandanger.netlify.app";
 const LOCAL_ORIGIN = `http://${HOST}:${PORT}`;
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",

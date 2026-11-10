@@ -1,4 +1,5 @@
 // File note: This file handles admin-api.test.js.
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
@@ -63,7 +64,7 @@ const runRow = {
 function createDatabase() {
   return {
     async execute(sql) {
-      if (sql.includes("SUM(incidents.created_at")) {
+      if (sql.includes("source_published_at") && sql.includes("SUM(")) {
         return [[{ total: 1, recent: 1 }]];
       }
       if (sql.includes("GROUP BY incident_categories.name")) {
@@ -237,7 +238,7 @@ test("admin dashboard queries include verified Taguig and Pateros incidents", as
     database: {
       async execute(sql) {
         queries.push(sql);
-        if (sql.includes("SUM(incidents.created_at")) {
+        if (sql.includes("source_published_at") && sql.includes("SUM(")) {
           return [[{ total: 2, recent: 1 }]];
         }
         if (sql.includes("FROM ingestion_runs")) return [[runRow]];

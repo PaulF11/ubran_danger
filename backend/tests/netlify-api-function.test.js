@@ -1,4 +1,5 @@
 // File note: This file handles netlify-api-function.test.js.
+
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { handler } = require("../../netlify/functions/api");
@@ -8,11 +9,11 @@ test("public Netlify API function serves the bundled Express API", async () => {
     {
       path: "/.netlify/functions/api/health",
       rawUrl:
-        "https://urbandangerintel.netlify.app/.netlify/functions/api/health",
+        "https://urbandanger.netlify.app/.netlify/functions/api/health",
       httpMethod: "GET",
       headers: {
         accept: "application/json",
-        host: "urbandangerintel.netlify.app",
+        host: "urbandanger.netlify.app",
       },
       queryStringParameters: {},
       multiValueQueryStringParameters: {},

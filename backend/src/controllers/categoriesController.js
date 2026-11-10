@@ -1,4 +1,5 @@
 // File note: This file handles categoriesController.js.
+
 const pool = require("../config/database");
 
 exports.getCategories = async (req, res, next) => {

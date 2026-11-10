@@ -1,4 +1,5 @@
 // File note: This file handles nearby_incident_alert_tracker.dart.
+
 import 'package:latlong2/latlong.dart';
 import 'package:urban_danger/core/taguig_region.dart';
 import 'package:urban_danger/models/incident.dart';

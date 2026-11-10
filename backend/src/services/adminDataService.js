@@ -1,4 +1,5 @@
 // File note: This file handles adminDataService.js.
+
 const pool = require("../config/database");
 const {
   TAGUIG_BARANGAY_PARAMS,
@@ -85,7 +86,8 @@ function createAdminDataService({
     const [totals, categories, severities, barangays, run] = await Promise.all([
       query(
         `SELECT COUNT(*) AS total,
-          SUM(incidents.created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)) AS recent
+          SUM(COALESCE(incidents.source_published_at, DATE(incidents.incident_date))
+            >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) AS recent
          FROM incidents LEFT JOIN locations ON incidents.location_id = locations.id
          WHERE ${VERIFIED_INCIDENT_SCOPE}`,
         TAGUIG_BARANGAY_PARAMS,

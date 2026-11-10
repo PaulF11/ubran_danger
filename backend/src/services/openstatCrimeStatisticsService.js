@@ -1,4 +1,5 @@
 // File note: This file handles openstatCrimeStatisticsService.js.
+
 const API_PATH = "/PXWeb/api/v1/en/DB/3S/C17/0011H2BRCI0.px";
 const DEFAULT_API_URL = `https://openstat.psa.gov.ph${API_PATH}`;
 const API_TIMEOUT_MS = 15000;

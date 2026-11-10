@@ -17,10 +17,14 @@ historical incidents are not deleted.
 ## Dates and feeds
 
 `incident_date` is the date the event occurred. `source_published_at` is the
-publisher's article date and is kept as separate metadata.
+publisher's article date and is kept as separate metadata. The active
+production dataset is restricted to verified 2026 incidents; fictional
+development rows and 2025 records are retained only in dated database backup
+tables, not in active feeds.
 
-- `GET /api/incidents?view=recent`: verified incidents from the latest 90
-  days, ordered by incident date descending.
+- `GET /api/incidents?view=recent`: verified incidents whose publication date
+  (falling back to occurrence date when publication is unavailable) is within
+  the latest 30 days, ordered by publication date descending.
 - `GET /api/incidents?view=historical`: older verified incidents.
 - `GET /api/incidents?view=all`: all verified incidents for map and route
   context.
@@ -38,8 +42,15 @@ original publishers configured by the backend. A follow-up arrest or
 corroborating article is not a second incident when it describes the same
 event. Source URLs are retained for auditability.
 
-## Current research status
+## Backup and cleanup
 
-The March, June, and August 2026 Taguig reports researched during this release
-remain unverified leads. No candidate was promoted or inserted into
-production without administrator approval.
+Before the 2026-only cleanup, three 2025 records were copied to
+`incident_cleanup_backup_20261105` with their related locations and source
+references in the corresponding dated backup tables. Three fictional
+development-only rows were separately copied to
+`incident_nonproduction_backup_20261105`. These backup tables are outside the
+active incident queries and preserve the original rows for recovery.
+
+The October 6 police-related report remains one pending-review incident with
+two source references. It is not included in public, map, route, or risk
+calculations until approved.

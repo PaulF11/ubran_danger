@@ -1,4 +1,5 @@
 // File note: This file handles app_theme.dart.
+
 import 'package:flutter/material.dart';
 
 abstract final class AppTheme {

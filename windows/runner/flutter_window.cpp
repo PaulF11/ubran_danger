@@ -1,3 +1,5 @@
+// File note: This file handles flutter_window.cpp.
+
 #include "flutter_window.h"
 
 #include <optional>

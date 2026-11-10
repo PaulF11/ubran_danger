@@ -3,6 +3,32 @@
 Urban Danger is a Flutter application for Taguig City and Pateros, backed by an
 Express API on Netlify Functions and an Aiven-compatible MySQL database.
 
+## Production deployment
+
+The existing Netlify sites are:
+
+- Public application: `urbandangerintel` at
+  `https://urbandangerintel.netlify.app`
+- Public API: `urbandanger` at
+  `https://urbandanger.netlify.app`
+- Admin application: `urban-danger-admin` at
+  `https://urban-danger-admin.netlify.app`
+
+The public Flutter build and admin build use the API site's `/api` routes.
+The public site's `/api` rewrite remains available for deployments that include
+the bundled functions, but the canonical production Flutter build does not
+depend on that rewrite. The API CORS allowlist must include both application
+domains. Deploy the public site from the repository root with
+`netlify deploy --prod --dir build/web`; deploy the admin site from `admin` with
+`netlify deploy --prod --dir dist`.
+
+The public `recent` incident feed is limited to the last 30 days by original
+publication date (falling back to occurrence date only when publication date
+is unavailable). Use `view=historical` or `view=all` for older verified
+records. The ingestion pipeline keeps occurrence and publication dates
+separate, records source references, and reports run counts and failures in
+the ingestion history.
+
 For maintainers, see [architecture](docs/ARCHITECTURE.md),
 [incident data](docs/INCIDENT-DATA.md), and [routing](docs/ROUTING.md).
 
@@ -194,7 +220,7 @@ server-only values in Vite variables. The frontend only needs
 `VITE_API_BASE_URL`, the admin site's own origin. The public site's `/api/*`
 rewrite invokes its bundled Express API function and backend services directly.
 The admin site's same-origin proxy forwards only to the fixed public origin,
-`https://urbandangerintel.netlify.app/api/*`; it cannot form a proxy loop and
+`https://urbandanger.netlify.app/api/*`; it cannot form a proxy loop and
 avoids browser CORS requirements.
 
 ### Local development
@@ -209,13 +235,13 @@ avoids browser CORS requirements.
 
 The public Flutter Netlify site publishes `build/web`; its `npm run build:web`
 command passes `API_BASE_URL` using `--dart-define` and its production value is
-`https://urbandangerintel.netlify.app`. The public site's `/api/*` rewrite
+`https://urbandanger.netlify.app`. The public site's `/api/*` rewrite
 invokes `netlify/functions/api.js`, which runs the existing Express backend,
 database services, authentication, and API routes on that same site. The
 existing scheduled and background ingestion functions remain on this site.
 
 The admin site uses `admin/`, runs `npm run build`, publishes `dist`, and sets
-`VITE_API_BASE_URL` to `https://urbandangerinteladmin.netlify.app`. Its
+`VITE_API_BASE_URL` to `https://urban-danger-admin.netlify.app`. Its
 same-origin `/api/*` function forwards requests to the fixed public origin;
 there is no separate backend Netlify site and no upstream URL in client code.
 

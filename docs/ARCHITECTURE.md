@@ -38,7 +38,7 @@ node scripts/local-preview-proxy.js
 ```
 
 Open `http://127.0.0.1:5190` for the public preview. The preview forwards
-only `/api/*` to `https://urbandangerintel.netlify.app/api/*` and rewrites the
+only `/api/*` to `https://urbandanger.netlify.app/api/*` and rewrites the
 compiled API origin in the locally served JavaScript response; it does not
 change production configuration.
 

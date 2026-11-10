@@ -1,4 +1,5 @@
 // File note: This file handles my_application.cc.
+
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>

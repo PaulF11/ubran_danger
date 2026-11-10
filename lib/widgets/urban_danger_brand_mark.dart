@@ -1,4 +1,5 @@
 // File note: This file handles urban_danger_brand_mark.dart.
+
 import 'package:flutter/material.dart';
 
 class UrbanDangerBrandMark extends StatelessWidget {

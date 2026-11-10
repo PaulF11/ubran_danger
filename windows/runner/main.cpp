@@ -1,3 +1,5 @@
+// File note: This file handles main.cpp.
+
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>

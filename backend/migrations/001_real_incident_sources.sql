@@ -1,4 +1,5 @@
 -- File note: This file handles 001_real_incident_sources.sql.
+
 USE urban_danger_db;
 
 ALTER TABLE locations

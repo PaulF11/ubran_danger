@@ -1,4 +1,5 @@
 // File note: This file handles adminIncidentsController.js.
+
 const pool = require("../config/database");
 const {
   TAGUIG_BARANGAY_PARAMS,

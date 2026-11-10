@@ -1,4 +1,5 @@
 // File note: This file handles AppDelegate.swift.
+
 import Cocoa
 import FlutterMacOS
 

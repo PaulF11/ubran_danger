@@ -5,7 +5,7 @@
   functions = "netlify/functions"
 
 [build.environment]
-  VITE_API_BASE_URL = "https://urbandangerinteladmin.netlify.app"
+  VITE_API_BASE_URL = "https://urbandanger.netlify.app"
 
 [[redirects]]
   from = "/api/*"

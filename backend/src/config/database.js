@@ -1,4 +1,5 @@
 // File note: This file handles database.js.
+
 const fs = require("node:fs");
 const path = require("node:path");
 const mysql = require("mysql2/promise");

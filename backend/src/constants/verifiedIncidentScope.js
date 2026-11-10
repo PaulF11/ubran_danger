@@ -1,4 +1,5 @@
 // File note: This file handles verifiedIncidentScope.js.
+
 const { TAGUIG_BARANGAY_SQL } = require("./taguigBarangays");
 
 const VERIFIED_INCIDENT_SCOPE = `incidents.verification_status = 'VERIFIED'

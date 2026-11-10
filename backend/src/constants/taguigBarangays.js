@@ -1,4 +1,5 @@
 // File note: This file handles taguigBarangays.js.
+
 const TAGUIG_BARANGAYS = [
   "Bagumbayan",
   "Bambang",

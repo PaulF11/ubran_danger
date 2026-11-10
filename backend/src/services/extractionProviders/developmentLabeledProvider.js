@@ -1,4 +1,5 @@
 // File note: This file handles developmentLabeledProvider.js.
+
 const FIELD_LABELS = [
   "Category",
   "Barangay",

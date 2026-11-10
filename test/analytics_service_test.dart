@@ -1,4 +1,5 @@
 // File note: This file handles analytics_service_test.dart.
+
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +10,7 @@ import 'package:urban_danger/services/analytics_service.dart';
 
 void main() {
   test('defaults to the production API host', () {
-    expect(ApiConfig.baseUri.toString(), 'https://urbandangerintel.netlify.app');
+    expect(ApiConfig.baseUri.toString(), 'https://urbandanger.netlify.app');
   });
 
   test('loads the production analytics response', () async {
@@ -43,7 +44,7 @@ void main() {
     expect(
       requestedUri,
       Uri.parse(
-        'https://urbandangerintel.netlify.app/api/analytics/summary',
+        'https://urbandanger.netlify.app/api/analytics/summary',
       ),
     );
     expect(summary.total, 3);

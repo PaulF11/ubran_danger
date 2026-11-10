@@ -1,4 +1,5 @@
 // File note: This file handles healthController.js.
+
 const pool = require("../config/database");
 
 exports.getHealth = (req, res) => {

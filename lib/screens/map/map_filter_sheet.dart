@@ -1,4 +1,5 @@
 // File note: This file handles map_filter_sheet.dart.
+
 import 'package:flutter/material.dart';
 
 class MapFilters {
