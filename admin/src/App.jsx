@@ -3,10 +3,7 @@
 import { useEffect, useState } from "react";
 
 const API_BASE = (
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD
-    ? window.location.origin
-    : "http://localhost:3000")
+  import.meta.env.VITE_API_BASE_URL || window.location.origin
 ).replace(/\/$/, "");
 const NAVIGATION = [
   ["dashboard", "Overview", "01"],
