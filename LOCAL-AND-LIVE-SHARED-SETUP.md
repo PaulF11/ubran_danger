@@ -21,7 +21,9 @@ Open PowerShell Terminal 2 and run:
 
 ```powershell
 Set-Location C:\urban_danger
-flutter run -d web-server --web-hostname 127.0.0.1 --web-port 5191 --dart-define=API_BASE_URL=https://urbandanger.netlify.app
+flutter build web --release --no-wasm-dry-run --dart-define=API_BASE_URL=https://urbandanger.netlify.app
+$env:LOCAL_PREVIEW_PORT = "5191"
+node scripts/local-preview-proxy.js
 ```
 
 Then open these URLs in Chrome:
@@ -52,8 +54,8 @@ Invoke-RestMethod 'http://localhost:5173/api/incidents?view=recent'
 
 Admin dashboard and monitoring endpoints remain protected. Sign in only with an authorized administrator account. Do not use manual scan, candidate approval/rejection, or other write actions just to verify connectivity.
 
-## CORS Requirement for Flutter Web
+## Browser API Access
 
-Flutter web sends API requests directly to `https://urbandanger.netlify.app`. Browsers require that API to allow the exact local origin `http://localhost:5191`. The backend CORS allowlist change in this branch permits only the requested local origins `http://localhost:5191` and `http://localhost:5173`, without enabling credentialed CORS or wildcard access. This backend change must be deployed to the existing API site before the local Flutter app can read production responses. Before that deployment, Chrome blocks the requests and Flutter remains on its loading screen.
+Flutter's release build retains `API_BASE_URL=https://urbandanger.netlify.app`. Since the production API currently omits CORS headers for localhost, use the local preview proxy command above: it rewrites the API origin only in the locally served JavaScript, and forwards `/api/*` to the fixed production API origin. The browser then makes same-origin requests to `http://localhost:5191/api/...`; no local Express server or MySQL is involved.
 
-Until production CORS is deployed and verified, Admin remains usable through its Vite proxy, but the Flutter web browser cannot read the live API from localhost.
+The backend source also allows only `http://localhost:5191` and `http://localhost:5173` in its CORS origin list, without wildcard origins or credentialed CORS. The live API has not yet been verified to serve that change. Once the existing API site deploys the pushed `main` commit, the Flutter app can use direct browser requests to the production API if its CORS response is verified.

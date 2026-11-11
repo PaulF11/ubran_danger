@@ -6,7 +6,7 @@ const https = require("node:https");
 const path = require("node:path");
 
 const HOST = "127.0.0.1";
-const PORT = 5190;
+const PORT = Number(process.env.LOCAL_PREVIEW_PORT || 5190);
 const BUILD_ROOT = path.resolve(__dirname, "..", "build", "web");
 const API_ORIGIN = "https://urbandanger.netlify.app";
 const LOCAL_ORIGIN = `http://${HOST}:${PORT}`;
@@ -118,7 +118,11 @@ function serveBuild(req, res, requestUrl) {
       res.writeHead(500).end("Preview bundle API origin could not be verified");
       return;
     }
-    contents = Buffer.from(javascript.replaceAll(API_ORIGIN, LOCAL_ORIGIN));
+    const requestOrigin =
+      req.headers.host === `localhost:${PORT}`
+        ? `http://localhost:${PORT}`
+        : LOCAL_ORIGIN;
+    contents = Buffer.from(javascript.replaceAll(API_ORIGIN, requestOrigin));
   }
 
   res.writeHead(200, {
