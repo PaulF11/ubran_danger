@@ -248,7 +248,9 @@ test("admin dashboard queries include verified Taguig and Pateros incidents", as
   });
 
   const dashboard = await data.getDashboard();
-  const incidentQueries = queries.filter((sql) => sql.includes("FROM incidents"));
+  const incidentQueries = queries.filter((sql) =>
+    sql.includes("FROM incidents"),
+  );
 
   assert.equal(dashboard.totalVerifiedIncidents, 2);
   assert.equal(incidentQueries.length, 4);
@@ -437,7 +439,10 @@ test("production CORS allows the exact app origins without credentials", async (
         },
       );
       assert.equal(allowed.headers.get("access-control-allow-origin"), origin);
-      assert.equal(allowed.headers.get("access-control-allow-credentials"), null);
+      assert.equal(
+        allowed.headers.get("access-control-allow-credentials"),
+        null,
+      );
     }
 
     const rejected = await fetch(

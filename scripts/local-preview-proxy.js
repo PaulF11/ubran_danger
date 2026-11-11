@@ -35,7 +35,10 @@ const mimeTypes = {
 };
 
 function proxyApi(req, res, requestUrl) {
-  const upstreamUrl = new URL(requestUrl.pathname + requestUrl.search, API_ORIGIN);
+  const upstreamUrl = new URL(
+    requestUrl.pathname + requestUrl.search,
+    API_ORIGIN,
+  );
   const headers = { ...req.headers };
   for (const header of HOP_BY_HOP_HEADERS) {
     delete headers[header];
@@ -60,7 +63,9 @@ function proxyApi(req, res, requestUrl) {
     },
   );
 
-  upstream.on("timeout", () => upstream.destroy(new Error("Upstream timed out")));
+  upstream.on("timeout", () =>
+    upstream.destroy(new Error("Upstream timed out")),
+  );
   upstream.on("error", (error) => {
     if (!res.headersSent) {
       res.writeHead(error.message === "Upstream timed out" ? 504 : 502, {
@@ -106,7 +111,10 @@ function serveBuild(req, res, requestUrl) {
   try {
     contents = fs.readFileSync(filePath);
   } catch (error) {
-    console.error(`Unable to read preview asset ${path.basename(filePath)}:`, error.message);
+    console.error(
+      `Unable to read preview asset ${path.basename(filePath)}:`,
+      error.message,
+    );
     res.writeHead(500).end("Unable to read preview asset");
     return;
   }
@@ -114,7 +122,9 @@ function serveBuild(req, res, requestUrl) {
   if (path.basename(filePath) === "main.dart.js") {
     const javascript = contents.toString("utf8");
     if (!javascript.includes(API_ORIGIN)) {
-      console.error("The built Flutter bundle does not contain the expected production API origin.");
+      console.error(
+        "The built Flutter bundle does not contain the expected production API origin.",
+      );
       res.writeHead(500).end("Preview bundle API origin could not be verified");
       return;
     }
@@ -126,7 +136,8 @@ function serveBuild(req, res, requestUrl) {
   }
 
   res.writeHead(200, {
-    "content-type": mimeTypes[path.extname(filePath)] || "application/octet-stream",
+    "content-type":
+      mimeTypes[path.extname(filePath)] || "application/octet-stream",
     "content-length": contents.length,
     "cache-control": "no-cache",
   });
@@ -150,7 +161,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === "/api" || requestUrl.pathname.startsWith("/api/")) {
+  if (
+    requestUrl.pathname === "/api" ||
+    requestUrl.pathname.startsWith("/api/")
+  ) {
     proxyApi(req, res, requestUrl);
   } else {
     serveBuild(req, res, requestUrl);

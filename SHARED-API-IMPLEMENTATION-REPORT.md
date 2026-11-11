@@ -17,14 +17,14 @@
 
 ## Production API Verification
 
-| Check | Result after API deploy |
-| --- | --- |
-| `/api/health` | HTTP 200 |
-| `/api/health/db` | HTTP 200, existing DB reachable |
-| `/api/incidents?view=recent` | HTTP 200, 5 records |
-| `/api/categories` | HTTP 200, 11 categories |
-| `/api/analytics/summary` | HTTP 200, 13 incidents |
-| `/api/admin/dashboard` without bearer token | HTTP 401, auth required |
+| Check                                       | Result after API deploy         |
+| ------------------------------------------- | ------------------------------- |
+| `/api/health`                               | HTTP 200                        |
+| `/api/health/db`                            | HTTP 200, existing DB reachable |
+| `/api/incidents?view=recent`                | HTTP 200, 5 records             |
+| `/api/categories`                           | HTTP 200, 11 categories         |
+| `/api/analytics/summary`                    | HTTP 200, 13 incidents          |
+| `/api/admin/dashboard` without bearer token | HTTP 401, auth required         |
 
 CORS GET responses return the exact `Access-Control-Allow-Origin` for each of the four approved origins. Admin bearer-token preflight returns 204 and allows `authorization`; `Access-Control-Allow-Credentials` is absent. An unlisted test origin receives no allow-origin header and its preflight is rejected.
 
