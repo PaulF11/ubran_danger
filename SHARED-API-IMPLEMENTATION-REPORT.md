@@ -1,45 +1,54 @@
 # Shared API Implementation Report
 
-## Implementation
+## Cause and Fix
 
-- Flutter API configuration is an origin, not an `/api` URL. `ApiConfig` defaults to `https://urbandanger.netlify.app`, and the service classes append `/api/...` endpoints.
-- The local Flutter command uses the production API origin explicitly; it does not use `localhost:3000`.
-- The Admin app calls `/api/admin/...`. Its Vite development proxy defaults to `https://urbandanger.netlify.app`; it does not require the local Express server or MySQL.
-- The backend CORS allowlist now includes the exact development origins `http://localhost:5191` and `http://localhost:5173`. Credentialed CORS and wildcard origins are not enabled.
+- Flutter's API base is an origin, without `/api`: `ApiConfig` defaults to `https://urbandanger.netlify.app`, while services construct `/api/incidents`, `/api/categories`, `/api/analytics/summary`, and `/api/routes/route`.
+- The earlier localhost:3000 command was wrong, but the verified Flutter run already used the production host. Its browser requests failed because the deployed API did not return `Access-Control-Allow-Origin` for `http://localhost:5191`; Chrome logged a CORS block and the app stayed on its loader.
+- Backend source now allows the exact development origins `http://localhost:5191` and `http://localhost:5173`, without wildcards or credentialed CORS. That change is on GitHub `main`, but the live API has not yet served the new headers.
+- Until that deployment can be verified, the local preview proxy rewrites only the locally served Flutter bundle and forwards API traffic to the fixed host `https://urbandanger.netlify.app`. It supports `LOCAL_PREVIEW_PORT=5191`; no local backend or database is used.
+- Admin remains unchanged: Vite proxies `/api/*` to `https://urbandanger.netlify.app`, preserving methods and authorization headers.
 
-## Live API Evidence
+## Verified API Data
 
-Read-only requests to the deployed API returned:
-
-| Endpoint | Result |
+| Request | Result |
 | --- | --- |
-| `GET /api/health` | HTTP 200, API running |
-| `GET /api/health/db` | HTTP 200, database connection OK |
-| `GET /api/incidents?view=recent` | HTTP 200, 5 records |
-| `GET /api/categories` | HTTP 200, 11 records |
-| `GET /api/analytics/summary` | HTTP 200, total 13 incidents |
-| `GET /api/admin/dashboard` without a token | HTTP 401, authentication required |
+| Production `/api/health` | 200, API running |
+| Production `/api/health/db` | 200, database connection OK |
+| Production `/api/incidents?view=recent` | 200, 5 records |
+| Production `/api/categories` | 200, 11 categories |
+| Production `/api/analytics/summary` | 200, 13 total incidents |
+| Admin dashboard without token | 401, authentication required |
 
-## Local Browser Results
+The deployed Public site currently requests `https://urbandangerintel.netlify.app/api/incidents?view=recent` and `/api/analytics/summary`; both returned 404 in Chrome. The API host itself returned 200 for those routes. The live Admin site still renders its login interface.
 
-- Admin: `http://localhost:5173` loads the login interface. Read-only API calls through the Vite proxy returned health 200, DB health 200, 5 recent incidents, 11 categories, and analytics total 13. The protected dashboard endpoint returned 401 without authentication, as expected.
-- Flutter: `http://localhost:5191` starts with `API_BASE_URL=https://urbandanger.netlify.app`. Before deployment of the CORS change, browser fetches to the production API fail with `No 'Access-Control-Allow-Origin' header is present`; the app remains on its loading screen. The source change cannot affect production until deployed.
-- Admin authentication was not completed. No authorized credentials or existing authenticated session were available to this test. No credentials were guessed or submitted.
+## Local Browser Tests
 
-## Validation
+- Flutter: `http://localhost:5191` renders the Home, Incidents, and Map tabs, verified records and map markers. Requests visible in Chrome use `http://localhost:5191/api/...`; the local preview proxy forwards them to `https://urbandanger.netlify.app/api/...` and responses returned 200.
+- Home analytics displayed 13 verified incidents, including 8 High. The recent feed displayed 5 records. The map loaded 13 incident markers.
+- Incident search for “Robbery” returned one record; category Robbery plus High severity also returned one record. Opening the incident showed its source, verification, location, severity, and details.
+- Route analysis returned HTTP 200 for a car route and included incident comparison. Photon place search returned HTTP 200 with three Taguig results.
+- No public incident-submission flow was found in the Flutter UI/source; no production record was created or changed.
+- Admin: `http://localhost:5173` rendered the login interface. Its proxy returned API health 200, DB health 200, 5 recent incidents, 11 categories, and analytics total 13. Unauthenticated dashboard data returned 401 as intended. No authorized session or credentials were available, so protected dashboard data and admin actions were not tested.
+- Before using the local proxy, direct Flutter browser requests produced the documented CORS error. After using the proxy, app API requests succeeded. OpenStreetMap tile requests were visible and the map rendered; canceled tile requests during navigation were `ERR_ABORTED`.
 
-- Flutter web release build: passed with `--dart-define=API_BASE_URL=https://urbandanger.netlify.app`.
-- Admin Vite production build: passed.
-- Backend suite: 161 passed, 0 failed, 1 opt-in live Gemini integration skipped.
-- Focused production CORS test: passed for the existing configured admin origin and both exact local origins; unlisted origins are rejected and `Access-Control-Allow-Credentials` is absent.
+## Build and Test Results
 
-## GitHub and Netlify
+- `flutter analyze lib test`: passed, no issues.
+- `flutter test`: passed, 44 tests.
+- `flutter build web --release --no-wasm-dry-run --dart-define=API_BASE_URL=https://urbandanger.netlify.app`: passed.
+- `npm --prefix admin run build`: passed.
+- Backend tests from `backend`: 161 passed, 0 failed, 1 opt-in Gemini integration skipped.
+- Focused CORS test: exact local and configured production origins allowed; unlisted origins rejected; credentials header absent.
+- Whole-workspace `flutter analyze` reports duplicate-type diagnostics under nested `admin/node_modules/.../urban_danger_netlify` copies. Analysis scoped to Flutter source and tests passes.
 
-- Branch: `docs/code-comments`; remote: `origin` (`https://github.com/PaulF11/ubran_danger.git`).
-- Commit and push status: pending final Git operation.
-- Netlify deployment status: not yet performed. The CLI is installed but no `NETLIFY_AUTH_TOKEN` is present, `netlify status` did not complete, and unauthenticated Netlify site metadata requests returned HTTP 401. The ignored workspace root site link also does not match the public site ID documented in the repository. No deployment was attempted to avoid publishing to the wrong existing site or creating a new one.
-- Production CORS verification is pending deployment. Until then, local Flutter's direct browser API calls remain blocked by production CORS. The Admin Vite proxy is already verified against the live API.
+## GitHub and Deployment
 
-## No Data Changes
+- Existing implementation commit: `e971cc1` (`feat: connect local Urban Danger apps to shared live API`). It was fast-forwarded to `main` and pushed normally; `origin/main` matched `e971cc17e3254ad2f09bd5797b49804ffe0576b5` after push.
+- Separate local Public User fix: `4e7bab3` (`fix: proxy local Flutter API requests on port 5191`) adds the port override and localhost-origin rewrite to the existing proxy.
+- GitHub push: `origin/main` was verified to match `4e7bab307baf22d4ecb75c0a157d6981a02a68da`; the worktree was clean before this report update.
+- Netlify status: the production API still omits localhost CORS headers after both main pushes. The CLI is installed but unauthenticated (`NETLIFY_AUTH_TOKEN` absent); Netlify site metadata requests returned 401. The ignored workspace root site ID `95e85e86-ef4d-4fdd-8cc1-6e42dad4825b` does not match the documented public API site ID `69ea3ae6-40b9-4456-a261-df5634dadca9`. No manual deployment was attempted because the target identity could not be verified.
+- Production API health, database health, incidents, categories, and analytics remain HTTP 200. The live Public site’s `/api` requests currently return 404, so that deployed frontend is not displaying API data. Automatic deployment from `main` could not be confirmed; the production site has not reflected the pushed API CORS change.
 
-All API requests in this test were read-only. No production scan, login attempt, incident mutation, approval/rejection, schema migration, or database write was performed.
+## Data Safety
+
+All production API calls used for this verification were reads, except the route-calculation POST, which computes a route and does not write data. No login attempt, scan, incident submission/edit, review decision, migration, seed, or database write was performed.
