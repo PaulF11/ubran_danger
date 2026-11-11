@@ -14,8 +14,13 @@ const { createAdminRouter } = require("./routes/admin");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
+const localDevelopmentOrigins = [
+  "http://localhost:5191",
+  "http://localhost:5173",
+];
 
 const allowedOrigins = [
+  ...localDevelopmentOrigins,
   ...(process.env.CORS_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())

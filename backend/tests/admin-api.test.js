@@ -400,7 +400,7 @@ test("sources and system status expose configuration state without source stats 
   });
 });
 
-test("production CORS allows the configured admin origin without wildcard access", async () => {
+test("production CORS allows configured and exact local origins without credentials", async () => {
   const names = [
     "NODE_ENV",
     "CORS_ORIGINS",
@@ -419,21 +419,25 @@ test("production CORS allows the configured admin origin without wildcard access
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   try {
-    const allowed = await fetch(
-      `http://127.0.0.1:${address.port}/api/admin/dashboard`,
-      {
-        method: "OPTIONS",
-        headers: {
-          Origin: process.env.ADMIN_FRONTEND_ORIGIN,
-          "Access-Control-Request-Method": "GET",
-          "Access-Control-Request-Headers": "authorization",
-        },
-      },
-    );
-    assert.equal(
-      allowed.headers.get("access-control-allow-origin"),
+    for (const origin of [
       process.env.ADMIN_FRONTEND_ORIGIN,
-    );
+      "http://localhost:5191",
+      "http://localhost:5173",
+    ]) {
+      const allowed = await fetch(
+        `http://127.0.0.1:${address.port}/api/admin/dashboard`,
+        {
+          method: "OPTIONS",
+          headers: {
+            Origin: origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+          },
+        },
+      );
+      assert.equal(allowed.headers.get("access-control-allow-origin"), origin);
+      assert.equal(allowed.headers.get("access-control-allow-credentials"), null);
+    }
 
     const rejected = await fetch(
       `http://127.0.0.1:${address.port}/api/admin/dashboard`,
