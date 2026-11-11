@@ -400,7 +400,7 @@ test("sources and system status expose configuration state without source stats 
   });
 });
 
-test("production CORS allows configured and exact local origins without credentials", async () => {
+test("production CORS allows the exact app origins without credentials", async () => {
   const names = [
     "NODE_ENV",
     "CORS_ORIGINS",
@@ -421,6 +421,7 @@ test("production CORS allows configured and exact local origins without credenti
   try {
     for (const origin of [
       process.env.ADMIN_FRONTEND_ORIGIN,
+      "https://urbandangerintel.netlify.app",
       "http://localhost:5191",
       "http://localhost:5173",
     ]) {

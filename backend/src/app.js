@@ -14,12 +14,16 @@ const { createAdminRouter } = require("./routes/admin");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
+const productionFrontendOrigins = [
+  "https://urbandangerintel.netlify.app",
+];
 const localDevelopmentOrigins = [
   "http://localhost:5191",
   "http://localhost:5173",
 ];
 
 const allowedOrigins = [
+  ...productionFrontendOrigins,
   ...localDevelopmentOrigins,
   ...(process.env.CORS_ORIGINS || "")
     .split(",")
