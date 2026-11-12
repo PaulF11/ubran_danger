@@ -1,6 +1,15 @@
 # Local and Live Shared Setup
 
-The public Flutter app and Admin dashboard use the existing production API at `https://urbandanger.netlify.app`. The deployed API serves data from the existing production database. Do not start `backend/src/server.js`, configure MySQL locally, or run database migrations for normal frontend use.
+## Official production websites
+
+- **Public User + Backend API:** https://urbandanger.netlify.app/
+- **Admin Dashboard:** https://urban-danger-admin.netlify.app/
+
+The Public User Flutter app and backend Netlify Functions share the first
+site. The Admin Dashboard is separate and proxies its API requests to that
+same backend. Both applications use the existing Aiven MySQL database through
+the shared backend. Do not start `backend/src/server.js`, configure MySQL
+locally, or run database migrations for normal frontend use.
 
 ## API URLs
 
@@ -56,6 +65,12 @@ Admin dashboard and monitoring endpoints remain protected. Sign in only with an 
 
 ## Browser API Access
 
-Flutter's release build retains `API_BASE_URL=https://urbandanger.netlify.app`. Since the production API currently omits CORS headers for localhost, use the local preview proxy command above: it rewrites the API origin only in the locally served JavaScript, and forwards `/api/*` to the fixed production API origin. The browser then makes same-origin requests to `http://localhost:5191/api/...`; no local Express server or MySQL is involved.
+Flutter's release build uses `API_BASE_URL=https://urbandanger.netlify.app`.
+The local preview proxy rewrites that origin only in the locally served
+JavaScript and forwards `/api/*` to the production API. The browser then makes
+same-origin requests to `http://localhost:5191/api/...`; no local Express
+server or MySQL is involved.
 
-The backend source also allows only `http://localhost:5191` and `http://localhost:5173` in its CORS origin list, without wildcard origins or credentialed CORS. The live API has not yet been verified to serve that change. Once the existing API site deploys the pushed `main` commit, the Flutter app can use direct browser requests to the production API if its CORS response is verified.
+The production health, database-health, incidents, categories, analytics, and
+route endpoints have been checked on the Public User/API site. The Admin
+site's `/api` proxy returns the same dataset through that backend.

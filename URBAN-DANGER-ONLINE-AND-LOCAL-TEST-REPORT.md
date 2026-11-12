@@ -1,5 +1,12 @@
 # URBAN DANGER ONLINE AND LOCAL TEST REPORT
 
+> Historical deployment snapshot. This report's earlier Public URL and results
+> are superseded by the current official targets in
+> [URBAN-DANGER-PRODUCTION-DIAGNOSTIC-REPORT.md](./URBAN-DANGER-PRODUCTION-DIAGNOSTIC-REPORT.md):
+> `https://urbandanger.netlify.app/` (Public User + API) and
+> `https://urban-danger-admin.netlify.app/` (Admin Dashboard). The URL recorded
+> below is preserved as history, not as a deployment target or blocker.
+
 ## A. Production Status
 
 ### Live production URLs tested

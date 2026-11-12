@@ -3,53 +3,66 @@
 ## Architecture
 
 - Flutter's `API_BASE_URL` is an origin without `/api`; `IncidentService`, `AnalyticsService`, and `RouteService` append `/api/...` endpoints.
-- The API host is `https://urbandanger.netlify.app`, serving the existing Aiven-connected Express API.
+- Official Public User + Backend API site: `https://urbandanger.netlify.app/`, Netlify site ID `95e85e86-ef4d-4fdd-8cc1-6e42dad4825b`. The Flutter app and Netlify Functions are deployed together; `/api/*` reaches the Express API.
+- Official Admin Dashboard site: `https://urban-danger-admin.netlify.app/`, Netlify site ID `c602d0e9-46c6-479a-832b-9d34ee9c9fd4`. Its `/api/*` proxy targets the Public User site's backend.
+- Both applications use that one backend and its existing Aiven MySQL connection.
 - Local Public User: `http://localhost:5191`, served through `scripts/local-preview-proxy.js`; its `/api/*` requests are forwarded to the fixed API host.
 - Local Admin: `http://localhost:5173`, with Vite `/api` proxy to the same API host. Authorization headers are preserved.
 - No local backend or MySQL is required for either local app.
 
-## Confirmed Causes and Fixes
+## Corrected Deployment Target
 
-- Local Flutter's direct browser requests originally failed because the deployed API had no CORS allow header for port 5191. Exact-origin CORS is now deployed for `http://localhost:5191`, `http://localhost:5173`, `https://urbandangerintel.netlify.app`, and the existing Admin origin `https://urban-danger-admin.netlify.app`. Credentials and wildcard access are not enabled.
-- The expected production Public site has a separate problem: its current `main.dart.js` embeds `https://urbandangerintel.netlify.app` as its API origin. A cache-bypass fetch returned a 3,037,895-byte bundle with that host, without `https://urbandanger.netlify.app` or `localhost:3000`. Its own `/api/health` and `/.netlify/functions/api/health` both return 404.
-- The current source and canonical `npm run build:web` script are configured with `https://urbandanger.netlify.app`; the new release bundle was verified to contain that host. Thus the Public site is serving an artifact/deployment that differs from the current source build, and the Public project’s routing/functions deployment is not the API-site deployment.
-- The local preview proxy and the API site root both serve the corrected Flutter build successfully. The specified `urbandangerintel.netlify.app` site still needs its own verified deployment.
+The two official production websites are the Public User/API site and the
+separate Admin Dashboard listed above. The former deployment investigation
+treated `urbandangerintel.netlify.app` as the Public target; that URL is not a
+required target. It is not treated as a blocker, and no site/domain was
+deleted, disconnected, or replaced.
+The backend's old-origin CORS compatibility entry is retained; it does not
+change the official production target.
 
 ## Production API Verification
 
-| Check                                       | Result after API deploy         |
-| ------------------------------------------- | ------------------------------- |
-| `/api/health`                               | HTTP 200                        |
-| `/api/health/db`                            | HTTP 200, existing DB reachable |
-| `/api/incidents?view=recent`                | HTTP 200, 5 records             |
-| `/api/categories`                           | HTTP 200, 11 categories         |
-| `/api/analytics/summary`                    | HTTP 200, 13 incidents          |
-| `/api/admin/dashboard` without bearer token | HTTP 401, auth required         |
+| Check | Current result |
+| --- | --- |
+| Public User/API root | HTTP 200; Flutter app title and app UI load |
+| `GET /api/health` | HTTP 200 |
+| `GET /api/health/db` | HTTP 200, database connection OK |
+| `GET /api/incidents?view=recent` | HTTP 200, 5 records; all 5 have coordinates |
+| `GET /api/categories` | HTTP 200, 11 categories |
+| `GET /api/analytics/summary` | HTTP 200, 13 incidents |
+| `POST /api/routes/route` (read-only route analysis) | HTTP 200; route geometry and verified-incident analysis returned |
+| Admin `/api` proxy, health/db/incidents/categories/analytics | HTTP 200; same 5 records, 11 categories, 13-incident summary |
 
-CORS GET responses return the exact `Access-Control-Allow-Origin` for each of the four approved origins. Admin bearer-token preflight returns 204 and allows `authorization`; `Access-Control-Allow-Credentials` is absent. An unlisted test origin receives no allow-origin header and its preflight is rejected.
+The Public and Admin sites return the same recent records and analytics summary
+through their shared API. The database-health endpoint confirms that the
+backend's existing database connection is live. No database writes or
+migrations were performed.
 
 The API deployment’s function set remains `api`, `ingest-background`, and `scheduled-ingestion`. Production variable names were checked without printing values; DB connection health remains good. No database writes or migrations were performed.
 
 ## Browser and Functional Results
 
-- Local Public at `http://localhost:5191` displays live Home analytics (13 records, 8 High), 5 recent incidents, and 13 Map markers. Search, category/severity filters, incident details, car route analysis, and Photon place search were tested.
-- Local Admin at `http://localhost:5173` loads its login page. Its proxy returns health 200, DB health 200, 5 recent incidents, 11 categories, and analytics 13. The protected dashboard endpoint returns 401 without auth.
-- The deployed API site root, `https://urbandanger.netlify.app`, now serves the Flutter app and uses its own `/api` endpoints successfully. Home analytics, the Incidents feed, and 13 map markers rendered.
-- The required Public site, `https://urbandangerintel.netlify.app`, still requests its own `/api` paths and those requests return 404. Its current bundle uses the wrong host. This site is not accessible to the authenticated Netlify account used for the API deployment, so its corrective deployment remains blocked.
-- The live Admin login page still renders. No authorized administrator credentials or existing session were available; an Admin browser check showed the login form and no stored session token. No credential was guessed or submitted.
+- Live Public User at `https://urbandanger.netlify.app/` loads the Flutter application. The current bundle contains the correct API origin, and direct read-only endpoint checks succeed as listed above.
+- The Public app's incident view showed an unavailable/offline state during the browser pass, despite the API feed returning 5 records. Therefore live UI search, category/severity filters, incident details, and map markers were not certified in this pass. Route analysis was verified directly through its read-only API endpoint, not through the UI.
+- Live Admin at `https://urban-danger-admin.netlify.app/` loads its restricted login page. Its `/api` proxy returned the same health, database-health, incident, category, and analytics results. No authorized credentials were available, so protected dashboard UI was not tested.
+- Local Public at `http://localhost:5191` serves the Flutter app; its proxied health, DB health, and recent incidents endpoints return HTTP 200. The browser's Incidents view remained visually empty during this pass, so Public UI search, filters, details, and map markers are not certified.
+- Local Admin at `http://localhost:5173` loads its restricted login page; its Vite proxy returns HTTP 200 for health, DB health, incidents (5), categories (11), and analytics (13). No credentials were submitted.
 - The public Flutter app has no incident-submission flow in the inspected UI/source. No production record was created or changed.
 
-## Netlify Account and Sites
+## Netlify Site Identity and Deployment
 
-- Netlify CLI 27.10.2 is authenticated locally. `netlify status` reports the `paul4nthonypagapulan` team and the linked API project `urbandanger`.
-- The integrated browser page at `https://app.netlify.com` displays the Log in page; that browser context is not authenticated, despite the CLI’s stored authentication.
-- `netlify sites:list` and authenticated `listSites` show five sites. They include:
-  - API `urbandanger`, ID `95e85e86-ef4d-4fdd-8cc1-6e42dad4825b`, URL `https://urbandanger.netlify.app`.
-  - Admin `urban-danger-admin`, ID `c602d0e9-46c6-479a-832b-9d34ee9c9fd4`, URL `https://urban-danger-admin.netlify.app`.
-- `urbandangerintel` is absent from the account’s site list. `getSite` for the previously documented ID `69ea3ae6-40b9-4456-a261-df5634dadca9` and for slug `urbandangerintel` both return 404 to this authenticated CLI.
-- API and Admin site records have empty build-settings/repository fields; their recent deployments have no branch or commit refs. The API site’s latest prior deploy was a manual CLI deployment from Nov 5, not a GitHub-linked deployment.
-- API build configuration from root `netlify.toml`: `npm run build:web`, publish `build/web`, functions `netlify/functions`. Admin config: `npm run build`, publish `dist`, functions `admin/netlify/functions`.
-- No Admin redeploy was made because its source was unchanged.
+The live Netlify-injected metadata in each site's HTML confirms the site IDs:
+Public User/API `95e85e86-ef4d-4fdd-8cc1-6e42dad4825b`, Admin
+`c602d0e9-46c6-479a-832b-9d34ee9c9fd4`. The root `netlify.toml` builds
+`build/web` and deploys `netlify/functions`; the Admin config builds `admin/dist`
+and proxies `/api/*` to the shared API origin.
+
+The known successful Public User/API deployment is
+`6af49d3ceaa28c5849e4a26b` (latest, ready, production; published Nov. 11,
+2026), confirmed through the Netlify API. The latest Admin deployment is
+`6aec1584fd8b5b5485b1ffe8` (ready, production; published Nov. 5, 2026).
+Because the Public build and API endpoints are already live, no additional
+deployment was made. The Admin source was unchanged, so it was not redeployed.
 
 ## Builds and Tests
 
@@ -64,11 +77,15 @@ The API deployment’s function set remains `api`, `ingest-background`, and `sch
 ## GitHub and Netlify Deployment
 
 - Production CORS fix commit: `7afaf1d` (`fix: allow exact Public User CORS origin`), pushed normally to `main`.
-- Verified API deployment: `6af49d3ceaa28c5849e4a26b`, state `ready`, production context, URL `https://urbandanger.netlify.app`, published Nov 11, 2026. It deployed the validated Flutter build and the three existing functions to the verified API site ID.
+- Latest deployment: `6af49d3ceaa28c5849e4a26b`, state `ready`, production context, URL `https://urbandanger.netlify.app`, published Nov 11, 2026. It deployed the Flutter build and the three existing functions to the verified site ID.
+- Latest Admin deployment: `6aec1584fd8b5b5485b1ffe8`, state `ready`, production context, URL `https://urban-danger-admin.netlify.app`, published Nov 5, 2026.
 - The pushed `main` commit did not automatically deploy the API; no Git branch/commit is attached to API deploy records. A manual deployment was required and completed.
-- No deployment was attempted to the missing/unverified `urbandangerintel` project. The Admin site was not redeployed.
-- The verified CORS source change is on GitHub `main` at `7afaf1d`; the final documentation commit will be verified separately.
+- No extra deployment was necessary for this documentation correction. The Admin site was not redeployed.
+- The previously reported CORS source change is on GitHub `main` at `7afaf1d`. The current documentation changes still need to be committed and pushed.
 
-## Exact Remaining Action
+## Remaining Verification
 
-Grant the Netlify CLI account/team access to the existing `urbandangerintel` Public project, or authenticate the CLI with the account/team that owns it. Do not paste a token into chat. Once `netlify sites:list` shows that project and its site ID is verified against `https://urbandangerintel.netlify.app`, build with `npm run build:web` and deploy that build to that exact site ID with its existing Netlify configuration. Then confirm its bundle uses `https://urbandanger.netlify.app` and that `/api/incidents?view=recent` and `/api/analytics/summary` return 200. No replacement site should be created.
+The Public/API and Admin site identities, local app shells, and shared backend
+endpoints are confirmed. Still unverified: the Public User's rendered
+incident/map/search/filter/detail interactions and protected Admin dashboard
+after an authorized sign-in. No old domain/site was changed or removed.

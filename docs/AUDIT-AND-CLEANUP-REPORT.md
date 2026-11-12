@@ -1,5 +1,12 @@
 # Urban Danger Compliance Audit and Safe Cleanup
 
+> Historical audit record. Earlier production URL observations below are
+> superseded by the current official targets documented in
+> [URBAN-DANGER-PRODUCTION-DIAGNOSTIC-REPORT.md](../URBAN-DANGER-PRODUCTION-DIAGNOSTIC-REPORT.md):
+> `https://urbandanger.netlify.app/` (Public User + API) and
+> `https://urban-danger-admin.netlify.app/` (Admin Dashboard). Historical
+> references are retained for context only, not as current deployment targets.
+
 ## Audit basis
 
 This report records a source-level audit and local validation performed on 2026-11-06. The attached revised paper was available in the conversation, but `GROUP 7 NEW FORMAT (1).docx` is not present in the workspace, so exact paper page numbers and diagram labels could not be independently extracted. Requirements below are identified by the feature or paper topic named in the audit request; page-level compliance remains `UNVERIFIABLE` until the document is available as a local file or PDF.
