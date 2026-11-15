@@ -10,9 +10,6 @@
 [functions."scheduled-ingestion"]
   schedule = "0 */6 * * *"
 
-[functions."incident-expiration"]
-  schedule = "0 16 * * *"
-
 [functions.api]
   included_files = ["backend/src/config/aiven-project-ca.pem"]
 

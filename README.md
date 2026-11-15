@@ -292,21 +292,24 @@ applied after migration `007_incident_source_references.sql` (and the preceding
 schema migrations). It updates the verified-city constraint to allow both
 supported municipalities and does not delete or rewrite incident rows.
 
-The `incident-expiration` Netlify Function is scheduled daily at 16:00 UTC
-(midnight in Asia/Manila). It permanently deletes valid incidents on or after
-the calendar-date anniversary 12 months after `incident_date`. Public and admin
-incident queries exclude expired rows even before cleanup executes. The cleanup
+The `incident-expiration` Netlify Function is deployed but has no production
+schedule while live MySQL cleanup remains unverified. When explicitly enabled,
+it permanently deletes valid incidents on or after the calendar-date
+anniversary 12 months after `incident_date`. Public and admin incident queries
+exclude expired rows only when expiration is explicitly enabled. The cleanup
 uses a MySQL advisory lock and transactions, deletes linked scan-candidate
 copies, relies on the incident/source-reference cascade, and deletes a location
 only when no incident still references it. Expired news candidates are removed
 from scan history; processed-source identifiers remain so the same URL is not
 retried and reintroduced. Missing or invalid occurrence dates are not deleted;
-their database IDs are reported in scheduled-function logs for review.
+their database IDs are reported in cleanup logs for review.
 
-Expiration filtering and permanent deletion are disabled by default. Both
+Expiration filtering and permanent deletion are disabled by default, and the
+production cleanup schedule is not configured. Both
 `INCIDENT_EXPIRATION_ENABLED=true` and
 `ENABLE_INCIDENT_PERMANENT_EXPIRATION=true` are required to hide expired
-incidents from application queries or enable scheduled deletion. After applying
-the migration and verifying the cleanup against controlled test data, set both
-variables in the public backend's server-side environment. Do not set these
-frontend-side or against production before completing that verification.
+incidents from application queries or enable cleanup. After applying the
+migration and verifying the cleanup against controlled test data, restore a
+production schedule and set both variables in the public backend's server-side
+environment. Do not set these frontend-side or against production before
+completing that verification.
