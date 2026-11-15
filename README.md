@@ -280,3 +280,33 @@ connectivity. Dashboard figures are application statistics, not official crime
 rates or safety scores. The in-memory login rate limiter is best-effort per
 backend process; production edge-level rate limiting is recommended for
 additional protection.
+
+### Incident validity and scheduled cleanup
+
+The public and admin interfaces use **TAGUIG** as the operational display
+label. The stored city values, incident addresses, and geographic coverage for
+Taguig City and Pateros remain unchanged.
+
+Migration `backend/migrations/008_pateros_and_expiration_policy.sql` must be
+applied after migration `007_incident_source_references.sql` (and the preceding
+schema migrations). It updates the verified-city constraint to allow both
+supported municipalities and does not delete or rewrite incident rows.
+
+The `incident-expiration` Netlify Function is scheduled daily at 16:00 UTC
+(midnight in Asia/Manila). It permanently deletes valid incidents on or after
+the calendar-date anniversary 12 months after `incident_date`. Public and admin
+incident queries exclude expired rows even before cleanup executes. The cleanup
+uses a MySQL advisory lock and transactions, deletes linked scan-candidate
+copies, relies on the incident/source-reference cascade, and deletes a location
+only when no incident still references it. Expired news candidates are removed
+from scan history; processed-source identifiers remain so the same URL is not
+retried and reintroduced. Missing or invalid occurrence dates are not deleted;
+their database IDs are reported in scheduled-function logs for review.
+
+Expiration filtering and permanent deletion are disabled by default. Both
+`INCIDENT_EXPIRATION_ENABLED=true` and
+`ENABLE_INCIDENT_PERMANENT_EXPIRATION=true` are required to hide expired
+incidents from application queries or enable scheduled deletion. After applying
+the migration and verifying the cleanup against controlled test data, set both
+variables in the public backend's server-side environment. Do not set these
+frontend-side or against production before completing that verification.

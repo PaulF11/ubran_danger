@@ -561,6 +561,29 @@ table {
   min-width: 1120px;
   text-align: left;
 }
+.sources-table {
+  min-width: 760px;
+  table-layout: fixed;
+}
+.sources-table th:nth-child(1),
+.sources-table td:nth-child(1) {
+  width: 25%;
+}
+.sources-table th:nth-child(2),
+.sources-table td:nth-child(2) {
+  width: 20%;
+}
+.sources-table th:nth-child(3),
+.sources-table td:nth-child(3) {
+  width: 40%;
+}
+.sources-table th:nth-child(4),
+.sources-table td:nth-child(4) {
+  width: 15%;
+}
+.sources-table td:nth-child(3) {
+  overflow-wrap: anywhere;
+}
 th {
   background: #edf2ed;
   color: #63736f;
@@ -1337,6 +1360,7 @@ tbody tr:hover {
 }
 
 .status-rejected,
+.status-not-verified,
 .status-error,
 .status-failed,
 .severity-high {

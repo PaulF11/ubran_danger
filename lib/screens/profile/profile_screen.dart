@@ -56,7 +56,7 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'This public application presents verified incident information for Taguig City and Pateros, derived from trusted automated source processing and validation rules.',
+                      'This public application presents verified incident information for TAGUIG, derived from trusted automated source processing and validation rules.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                         height: 1.5,
@@ -69,7 +69,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 18),
             _InfoCard(
               title: 'Coverage area',
-              body: 'Taguig City and Pateros, Philippines',
+              body: 'TAGUIG, Philippines',
               icon: Icons.location_city_outlined,
             ),
             const SizedBox(height: 10),

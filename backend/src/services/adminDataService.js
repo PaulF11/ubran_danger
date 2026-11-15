@@ -251,18 +251,34 @@ function createAdminDataService({
     const namesByHost = new Map([
       ["www.gmanetwork.com", "GMA News"],
       ["news.tv5.com.ph", "News5 / TV5"],
+      ["www.pna.gov.ph", "Philippine News Agency (PNA)"],
+      ["pna.gov.ph", "Philippine News Agency (PNA)"],
+      ["www.philstar.com", "Philstar"],
+      ["philstar.com", "Philstar"],
+      ["www.manilatimes.net", "Manila Times"],
+      ["manilatimes.net", "Manila Times"],
     ]);
     return parseCollectionTargetUrls(
       environment.SOURCE_COLLECTION_TARGET_URLS,
-    ).map((url) => ({
-      name: namesByHost.get(url.hostname.toLowerCase()) || url.hostname,
-      domain: url.hostname.toLowerCase(),
-      enabled: true,
-      seedUrls: [url.toString()],
-      latestCollectionAt: null,
-      articlesCollected: null,
-      activityAvailable: false,
-    }));
+    ).map((url) => {
+      const googleNewsQuery = url.hostname.toLowerCase() === "news.google.com"
+        ? url.searchParams.get("q") || ""
+        : "";
+      const sourceName = googleNewsQuery
+        ? googleNewsQuery.toLowerCase().includes("pateros")
+          ? "Google News - Pateros incident RSS"
+          : "Google News - Taguig incident RSS"
+        : namesByHost.get(url.hostname.toLowerCase()) || url.hostname;
+      return {
+        name: sourceName,
+        domain: url.hostname.toLowerCase(),
+        enabled: true,
+        seedUrls: [url.toString()],
+        latestCollectionAt: null,
+        articlesCollected: null,
+        activityAvailable: false,
+      };
+    });
   }
 
   async function getSystemStatus() {

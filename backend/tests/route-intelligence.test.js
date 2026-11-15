@@ -501,7 +501,7 @@ test("route geometry extending outside Taguig preserves Out of Scope handling", 
   const response = responseRecorder();
   await controller(request(), response);
   assert.equal(response.statusCode, 400);
-  assert.match(response.body.message, /outside the Taguig map area/);
+  assert.match(response.body.message, /outside the TAGUIG coverage area/);
 });
 
 test("malformed OSRM coordinates fail as an unavailable route instead of being analyzed", async () => {

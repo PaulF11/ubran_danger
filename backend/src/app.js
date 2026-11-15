@@ -14,7 +14,10 @@ const { createAdminRouter } = require("./routes/admin");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
-const productionFrontendOrigins = ["https://urbandangerintel.netlify.app"];
+const productionFrontendOrigins = [
+  "https://urbandanger.netlify.app",
+  "https://urban-danger-admin.netlify.app",
+];
 const localDevelopmentOrigins = [
   "http://localhost:5191",
   "http://localhost:5173",
@@ -68,6 +71,10 @@ app.use(
   }),
 );
 app.use(express.json({ limit: "256kb" }));
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 
 app.use("/api/health", healthRouter);
 app.use("/api/categories", categoriesRouter);

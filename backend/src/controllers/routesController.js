@@ -104,7 +104,7 @@ function createRoutesController({
       return res.status(400).json({
         success: false,
         message:
-          "Start and destination coordinates must be within the Taguig map area.",
+          "Start and destination coordinates must be within the TAGUIG coverage area.",
       });
     }
 
@@ -156,7 +156,7 @@ function createRoutesController({
       if (error?.message === "route_out_of_scope") {
         return res.status(400).json({
           success: false,
-          message: "The calculated route extends outside the Taguig map area.",
+          message: "The calculated route extends outside the TAGUIG coverage area.",
         });
       }
       logger.error("[route-analysis] failed category=osrm");

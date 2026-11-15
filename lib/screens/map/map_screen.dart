@@ -172,7 +172,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       );
     }
-
   }
 
   Future<void> _loadIncidents() async {
@@ -198,7 +197,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       setState(() {
         _errorMessage = error is IncidentApiException
             ? error.message
-            : 'Unable to load Taguig City and Pateros incidents. Check your connection and retry.';
+            : 'Unable to load TAGUIG incidents. Check your connection and retry.';
         _isLoading = false;
       });
     }
@@ -317,7 +316,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       textInputAction: TextInputAction.search,
       maxLines: 1,
       decoration: InputDecoration(
-        hintText: 'Search Taguig City and Pateros incidents',
+        hintText: 'Search TAGUIG incidents',
         prefixIcon: const Icon(Icons.search),
         border: InputBorder.none,
         isDense: true,
@@ -326,8 +325,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           vertical: isCompact ? 8 : 14,
         ),
         suffixIcon: _query.isEmpty
-          ? null
-          : IconButton(
+            ? null
+            : IconButton(
                 tooltip: 'Clear search',
                 onPressed: () {
                   _searchController.clear();
@@ -445,31 +444,31 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   child: SizedBox(
                     height: isCompact ? 40 : null,
                     child: SegmentedButton<_MapMode>(
-                    showSelectedIcon: false,
-                    style: isCompact
-                        ? const ButtonStyle(
-                            visualDensity: VisualDensity.compact,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            padding: WidgetStatePropertyAll(
-                              EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                          )
-                        : null,
-                    segments: const [
-                      ButtonSegment(
-                        value: _MapMode.incidents,
-                        icon: Icon(Icons.place_outlined),
-                        label: Text('Incidents'),
-                      ),
-                      ButtonSegment(
-                        value: _MapMode.route,
-                        icon: Icon(Icons.route_outlined),
-                        label: Text('Route analysis'),
-                      ),
-                    ],
-                    selected: {_mode},
-                    onSelectionChanged: (selection) =>
-                        _setMode(selection.first),
+                      showSelectedIcon: false,
+                      style: isCompact
+                          ? const ButtonStyle(
+                              visualDensity: VisualDensity.compact,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: WidgetStatePropertyAll(
+                                EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                            )
+                          : null,
+                      segments: const [
+                        ButtonSegment(
+                          value: _MapMode.incidents,
+                          icon: Icon(Icons.place_outlined),
+                          label: Text('Incidents'),
+                        ),
+                        ButtonSegment(
+                          value: _MapMode.route,
+                          icon: Icon(Icons.route_outlined),
+                          label: Text('Route analysis'),
+                        ),
+                      ],
+                      selected: {_mode},
+                      onSelectionChanged: (selection) =>
+                          _setMode(selection.first),
                     ),
                   ),
                 ),
@@ -484,8 +483,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         style: isCompact
                             ? OutlinedButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                 ),
@@ -507,8 +505,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         style: isCompact
                             ? TextButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
                                 ),
@@ -641,7 +638,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         title: Text(forAlerts ? 'Enable nearby alerts?' : 'Use your location?'),
         content: Text(
           forAlerts
-              ? 'While this map is open, Urban Danger checks your current location against verified Taguig City and Pateros incidents to alert you nearby. Location is not stored or tracked in the background. Notification permission is requested separately; browser alerts require a supported browser and permission.'
+              ? 'While this map is open, Urban Danger checks your current location against verified TAGUIG incidents to alert you nearby. Location is not stored or tracked in the background. Notification permission is requested separately; browser alerts require a supported browser and permission.'
               : 'While this map is open, Urban Danger uses your location to show your position, help set a route start, and compare nearby verified incidents. Location is not stored or tracked in the background.',
         ),
         actions: [
@@ -943,7 +940,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         padding: const EdgeInsets.all(14),
         child: Text(
           _incidents.isEmpty
-              ? 'No verified incidents in Taguig City or Pateros are currently available.'
+              ? 'No verified incidents in TAGUIG are currently available.'
               : 'No incidents match these filters.',
           textAlign: TextAlign.center,
         ),
@@ -1232,26 +1229,29 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           );
     final routePanel = screenSize.width < 500
         ? _routePanelExpanded
-            ? SizedBox(
-            height: screenSize.height * 0.42,
-            child: Card(
-              child: Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                      child: routeDetails,
+              ? SizedBox(
+                  height: screenSize.height * 0.42,
+                  child: Card(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                            child: routeDetails,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: routeAction,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                    child: SizedBox(width: double.infinity, child: routeAction),
-                  ),
-                ],
-              ),
-            ),
-          )
-            : _buildCollapsedRoutePanel(context)
+                )
+              : _buildCollapsedRoutePanel(context)
         : Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -1524,7 +1524,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 suggestions = results;
                 searching = false;
                 if (results.isEmpty) {
-                  searchError = 'No matching places in Taguig or Pateros.';
+                  searchError = 'No matching places in TAGUIG.';
                 }
               });
             } on Object catch (error) {
@@ -1654,7 +1654,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ..showSnackBar(
           const SnackBar(
             content: Text(
-              'Choose a suggested place or enter valid latitude, longitude coordinates within Taguig or Pateros.',
+              'Choose a suggested place or enter valid latitude, longitude coordinates within TAGUIG.',
             ),
           ),
         );
@@ -1778,7 +1778,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         title: Text('Out of Scope'),
         content: Text(
           'This location is outside the Urban Danger coverage area. '
-          'Currently, only Taguig City and Pateros are supported.',
+          'Currently, only TAGUIG is supported.',
         ),
       ),
     );

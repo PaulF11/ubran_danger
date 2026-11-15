@@ -17,7 +17,7 @@ router.get("/status", (req, res) => {
     success: true,
     data: {
       architecture: "automated_verified_incident_pipeline",
-      coverage: "Taguig City, Philippines",
+      coverage: "TAGUIG",
       publicApi: "/api/incidents",
       trustedSourceAllowlist: normalizeTrustedHosts(),
       ingestionEnabled: process.env.NODE_ENV !== "production",

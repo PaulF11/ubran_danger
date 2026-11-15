@@ -101,6 +101,37 @@ test("previously processed sources are skipped before Gemini extraction", async 
   assert.equal(summary.results[0].status, "SKIPPED_PROCESSED");
 });
 
+test("expired extracted incidents are skipped and marked processed without persistence", async () => {
+  const recorded = [];
+  let verifierCalls = 0;
+  let persistenceCalls = 0;
+  const summary = await runAutomatedIngestion({
+    collector: async () => [article],
+    processedSources: {
+      findProcessed: async () => new Set(),
+      recordProcessed: async (url, status) => recorded.push({ url, status }),
+    },
+    extractor: async () => ({ ...candidate, incidentDate: "2025-11-14" }),
+    verifier: async () => {
+      verifierCalls += 1;
+      return { verified: true, status: "VERIFIED" };
+    },
+    persister: async () => {
+      persistenceCalls += 1;
+      return { status: "INSERTED" };
+    },
+    now: () => new Date("2026-11-15T16:00:00Z"),
+  });
+
+  assert.equal(summary.expiredCandidates, 1);
+  assert.equal(summary.insertedIncidents, 0);
+  assert.equal(summary.results[0].status, "EXPIRED");
+  assert.equal(summary.results[0].candidate, null);
+  assert.equal(verifierCalls, 0);
+  assert.equal(persistenceCalls, 0);
+  assert.deepEqual(recorded, [{ url: article.url, status: "PROCESSED" }]);
+});
+
 test("a Gemini rate limit pauses remaining candidate requests in the scan", async () => {
   let extractionCalls = 0;
   const recorded = [];

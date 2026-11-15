@@ -132,10 +132,11 @@ function createReviewDatabase() {
         const id = Number(parameters[parameters.length - 1]);
         const row = rows.get(id);
         if (!row) return [{ affectedRows: 0 }];
-        if (sql.includes("SET review_status = 'REJECTED'")) {
-          row.reviewStatus = "REJECTED";
-          row.reviewedBy = parameters[0];
-          row.reviewedAt = "2026-10-08T12:00:00Z";
+        if (sql.includes("candidate_json = NULL")) {
+          row.scanStatus = "EXPIRED";
+          row.verificationStatus = "EXPIRED";
+          row.reasons = JSON.parse(parameters[0]);
+          row.candidate = null;
         } else if (sql.includes("SET scan_status = ?")) {
           [row.scanStatus, row.verificationStatus] = parameters;
           row.reasons = JSON.parse(parameters[2]);
@@ -329,33 +330,27 @@ test("admin approval re-verifies then persists only the approved candidate with 
   assert.equal((await service.listRunCandidates(22))[0].incidentId, 731);
 });
 
-test("reject marks the scan report rejected without invoking incident persistence", async () => {
+test("admin approval clears an expired candidate instead of persisting it", async () => {
   const database = createReviewDatabase();
+  const candidate = validCandidate({ incidentDate: "2025-11-14" });
   let persistenceCalls = 0;
   const service = createAdminScanReviewService({
     database,
+    now: () => new Date("2026-11-15T16:00:00Z"),
     persister: async () => {
       persistenceCalls += 1;
-      return { status: "INSERTED", id: 99 };
+      return { status: "INSERTED", id: 731 };
     },
   });
   await service.saveRunCandidates(22, [
-    {
-      sourceUrl: "https://www.gmanetwork.com/news/test-fixture/story/",
-      status: "PENDING_REVIEW",
-      candidate: validCandidate(),
-    },
+    { sourceUrl: candidate.sourceUrl, status: "VERIFIED", candidate },
   ]);
 
-  assert.deepEqual(await service.rejectCandidate(1, "admin-1"), {
-    id: 1,
-    reviewStatus: "REJECTED",
-  });
-  assert.equal(
-    (await service.listRunCandidates(22))[0].reviewStatus,
-    "REJECTED",
-  );
+  const result = await service.approveCandidate(1, "admin-1");
+
+  assert.equal(result.verificationStatus, "EXPIRED");
   assert.equal(persistenceCalls, 0);
+  assert.equal((await service.listRunCandidates(22))[0].candidate, null);
 });
 
 test("invalid candidates cannot be approved and duplicates are not inserted", async () => {
@@ -406,7 +401,7 @@ test("invalid candidates cannot be approved and duplicates are not inserted", as
   );
 });
 
-test("scan candidates and approval/rejection actions require admin authentication", async () => {
+test("scan candidates and approval actions require admin authentication", async () => {
   let actions = 0;
   const reviewService = {
     async listRunCandidates() {
@@ -416,10 +411,6 @@ test("scan candidates and approval/rejection actions require admin authenticatio
     async approveCandidate() {
       actions += 1;
       return { reviewStatus: "APPROVED" };
-    },
-    async rejectCandidate() {
-      actions += 1;
-      return { reviewStatus: "REJECTED" };
     },
   };
 
@@ -456,12 +447,12 @@ test("scan candidates and approval/rejection actions require admin authenticatio
     assert.equal(approved.status, 200);
     assert.equal(actions, 2);
 
-    const rejected = await fetch(
+    const removedAction = await fetch(
       `${baseUrl}/api/admin/scan-candidates/1/reject`,
       { method: "POST", headers: { authorization: `Bearer ${token}` } },
     );
-    assert.equal(rejected.status, 200);
-    assert.equal(actions, 3);
+    assert.equal(removedAction.status, 404);
+    assert.equal(actions, 2);
   });
 });
 
@@ -520,16 +511,12 @@ test("manual review-only pipeline records candidates without incident persistenc
   assert.equal(savedRun.reports[0].sourceUrl, candidate.sourceUrl);
 });
 
-test("authenticated non-admin users cannot approve or reject scan candidates", async () => {
+test("authenticated non-admin users cannot approve scan candidates", async () => {
   let actions = 0;
   const reviewService = {
     async approveCandidate() {
       actions += 1;
       return { reviewStatus: "APPROVED" };
-    },
-    async rejectCandidate() {
-      actions += 1;
-      return { reviewStatus: "REJECTED" };
     },
     async listRunCandidates() {
       return [];
@@ -542,10 +529,7 @@ test("authenticated non-admin users cannot approve or reject scan candidates", a
   });
 
   await withAdminServer(reviewService, async (baseUrl) => {
-    for (const [path, body] of [
-      ["/approve", { confirmed: true }],
-      ["/reject", undefined],
-    ]) {
+    for (const [path, body] of [["/approve", { confirmed: true }]]) {
       const response = await fetch(
         `${baseUrl}/api/admin/scan-candidates/1${path}`,
         {

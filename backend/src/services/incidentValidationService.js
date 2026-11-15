@@ -2,6 +2,7 @@
 
 const { TAGUIG_BARANGAYS } = require("../constants/taguigBarangays");
 const { isWithinTaguigMapArea } = require("../constants/taguigMapBounds");
+const { incidentDateOnly } = require("./incidentExpirationPolicy");
 
 const TAGUIG_SET = new Set(
   TAGUIG_BARANGAYS.map((barangay) => barangay.toLowerCase()),
@@ -132,7 +133,7 @@ function validateCandidate(candidate = {}) {
   if (!description || description.length < 20) {
     errors.push("Description is too short or missing.");
   }
-  if (!incidentDate || Number.isNaN(Date.parse(incidentDate))) {
+  if (!incidentDateOnly(incidentDate)) {
     errors.push("Incident date is invalid.");
   }
   if (!sourceName) {

@@ -54,14 +54,15 @@ class IncidentService {
       throw const FormatException('Invalid incidents data.');
     }
 
-    return data
-        .map((item) {
-          if (item is! Map<String, dynamic>) {
-            throw const FormatException('Invalid incident record.');
-          }
-          return Incident.fromJson(item);
-        })
-        .toList(growable: false);
+    final incidents = <Incident>[];
+    for (final item in data) {
+      if (item is! Map) {
+        throw const FormatException('Invalid incident record.');
+      }
+      final record = Map<String, dynamic>.from(item);
+      incidents.add(Incident.fromJson(record));
+    }
+    return incidents;
   }
 
   void close() {

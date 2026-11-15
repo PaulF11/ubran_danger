@@ -1,6 +1,7 @@
 // File note: This file handles verifiedIncidentScope.js.
 
 const { TAGUIG_BARANGAY_SQL } = require("./taguigBarangays");
+const { ACTIVE_INCIDENT_DATE_SQL } = require("../services/incidentExpirationPolicy");
 
 const VERIFIED_INCIDENT_SCOPE = `incidents.verification_status = 'VERIFIED'
   AND incidents.city IN ('Taguig City', 'Pateros')
@@ -8,6 +9,7 @@ const VERIFIED_INCIDENT_SCOPE = `incidents.verification_status = 'VERIFIED'
   AND incidents.source_url IS NOT NULL
   AND incidents.verification_method IS NOT NULL
   AND incidents.last_verified_at IS NOT NULL
+  AND ${ACTIVE_INCIDENT_DATE_SQL}
   AND (
     incidents.city = 'Pateros'
     OR locations.barangay IS NULL

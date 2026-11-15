@@ -2,6 +2,7 @@
 
 const pool = require("../config/database");
 const { findConflict, isDuplicate } = require("./incidentDeduplicationService");
+const { incidentDateOnly, isIncidentExpired } = require("./incidentExpirationPolicy");
 
 function toDatabaseCandidate(row) {
   return {
@@ -44,8 +45,15 @@ async function findExisting(connection, candidate) {
 
 async function insertVerifiedCandidate(
   candidate,
-  { dbPool = pool, verifiedAt = new Date() } = {},
+  { dbPool = pool, verifiedAt = new Date(), now = () => new Date() } = {},
 ) {
+  if (!incidentDateOnly(candidate.incidentDate)) {
+    return { status: "INVALID_DATE", inserted: false };
+  }
+  if (isIncidentExpired(candidate.incidentDate, now())) {
+    return { status: "EXPIRED", inserted: false };
+  }
+
   const connection = await dbPool.getConnection();
   try {
     await connection.beginTransaction();

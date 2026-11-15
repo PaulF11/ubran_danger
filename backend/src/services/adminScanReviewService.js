@@ -7,6 +7,10 @@ const {
   verifyCandidate,
 } = require("./automatedVerificationService");
 const { insertVerifiedCandidate } = require("./incidentPersistenceService");
+const {
+  incidentDateOnly,
+  isIncidentExpired,
+} = require("./incidentExpirationPolicy");
 
 function sourceHash(url) {
   return createHash("sha256").update(url).digest("hex");
@@ -126,27 +130,33 @@ function createAdminScanReviewService({
     return rows[0] ? toReviewCandidate(rows[0]) : null;
   }
 
-  async function rejectCandidate(id, reviewer) {
-    const [result] = await database.execute(
-      `UPDATE admin_scan_candidates
-       SET review_status = 'REJECTED', reviewed_by = ?,
-           reviewed_at = UTC_TIMESTAMP(3)
-       WHERE id = ? AND review_status = 'PENDING'`,
-      [reviewer, id],
-    );
-    if (Number(result.affectedRows) === 1) {
-      return { id: Number(id), reviewStatus: "REJECTED" };
-    }
-    const existing = await getCandidate(id);
-    if (!existing) return null;
-    const error = new Error("This scan report is no longer awaiting review.");
-    error.code = "REVIEW_CONFLICT";
-    throw error;
-  }
-
   async function approveCandidate(id, reviewer) {
     const candidateRecord = await getCandidate(id);
     if (!candidateRecord) return null;
+    const occurrenceDate =
+      candidateRecord.candidate?.incidentDate ??
+      candidateRecord.candidate?.incident_date;
+    if (
+      incidentDateOnly(occurrenceDate) &&
+      isIncidentExpired(occurrenceDate, now())
+    ) {
+      const reasons = [
+        "The incident occurrence date is outside the 12-month validity period.",
+      ];
+      await database.execute(
+        `UPDATE admin_scan_candidates
+         SET scan_status = 'EXPIRED', verification_status = 'EXPIRED',
+             reasons_json = ?, candidate_json = NULL
+         WHERE id = ? AND review_status = 'PENDING'`,
+        [JSON.stringify(reasons), id],
+      );
+      return {
+        id: Number(id),
+        reviewStatus: "PENDING",
+        verificationStatus: "EXPIRED",
+        reasons,
+      };
+    }
     if (
       candidateRecord.reviewStatus !== "PENDING" ||
       candidateRecord.verificationStatus !== "VERIFIED" ||
@@ -241,7 +251,6 @@ function createAdminScanReviewService({
   return {
     approveCandidate,
     listRunCandidates,
-    rejectCandidate,
     saveRunCandidates,
   };
 }

@@ -280,25 +280,6 @@ function App() {
     }
   }
 
-  async function rejectScanCandidate(candidate) {
-    setReviewingCandidateId(candidate.id);
-    setError("");
-    try {
-      await request(`/scan-candidates/${candidate.id}/reject`, token, {
-        method: "POST",
-      });
-      const reports = await request(
-        `/scan-candidates?runId=${encodeURIComponent(candidate.runId)}`,
-        token,
-      );
-      setScanCandidates(reports);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setReviewingCandidateId(null);
-    }
-  }
-
   async function confirmScanCandidateApproval() {
     if (!approvalCandidate) return;
     const candidate = approvalCandidate;
@@ -438,7 +419,7 @@ function App() {
       <main className="main-area">
         <header className="topbar">
           <div>
-            <p className="eyebrow">TAGUIG CITY + PATEROS / OPERATIONS</p>
+            <p className="eyebrow">TAGUIG</p>
             <h1>{NAVIGATION.find(([key]) => key === view)?.[1]}</h1>
           </div>
           <div className="topbar-meta">
@@ -470,7 +451,6 @@ function App() {
               reviewingCandidateId={reviewingCandidateId}
               onViewCandidate={setScanCandidateDetail}
               onApproveCandidate={setApprovalCandidate}
-              onRejectCandidate={rejectScanCandidate}
             />
           )}
           {!loading && view === "incidents" && (
@@ -524,7 +504,6 @@ function Dashboard({
   reviewingCandidateId,
   onViewCandidate,
   onApproveCandidate,
-  onRejectCandidate,
 }) {
   if (!data)
     return (
@@ -616,7 +595,7 @@ function Dashboard({
               value={scanStats.verifiedCandidates ?? scanStats.verifiedCount}
             />
             <Detail
-              label="Rejected"
+              label="Unverified candidates"
               value={scanStats.candidatesRejected ?? scanStats.rejectedCount}
             />
             <Detail
@@ -636,7 +615,6 @@ function Dashboard({
             reviewingCandidateId={reviewingCandidateId}
             onView={onViewCandidate}
             onApprove={onApproveCandidate}
-            onReject={onRejectCandidate}
           />
         )}
       </section>
@@ -653,7 +631,7 @@ function Dashboard({
           {run ? (
             <dl className="detail-list">
               <Detail label="Verified" value={run.verifiedCount} />
-              <Detail label="Rejected" value={run.rejectedCount} />
+              <Detail label="Unverified candidates" value={run.rejectedCount} />
               <Detail label="Duplicates" value={run.duplicateCount} />
               <Detail label="Inserted" value={run.insertedCount} />
               <Detail label="Errors" value={run.errorCount} />
@@ -675,7 +653,6 @@ function ScanCandidateList({
   reviewingCandidateId,
   onView,
   onApprove,
-  onReject,
 }) {
   function reportOutcome(item) {
     const reasons = Array.isArray(item.reasons) ? item.reasons : [];
@@ -685,7 +662,9 @@ function ScanCandidateList({
       .toUpperCase();
 
     if (status === "VERIFIED") return { label: "Verified", className: "verified" };
-    if (status === "REJECTED") return { label: "Rejected", className: "rejected" };
+    if (status === "REJECTED") {
+      return { label: "Not verified", className: "not-verified" };
+    }
     if (
       status === "NOT_AN_INCIDENT" ||
       status === "SKIPPED_PROCESSED" ||
@@ -766,7 +745,7 @@ function ScanCandidateList({
       .toUpperCase();
     const labels = {
       VERIFIED: "Verified",
-      REJECTED: "Rejected",
+      REJECTED: "Not verified",
       PENDING_REVIEW: "Pending review",
       NOT_AN_INCIDENT: "Not an incident",
       SKIPPED_PROCESSED: "Skipped (already processed)",
@@ -790,7 +769,6 @@ function ScanCandidateList({
           item.reviewStatus === "PENDING" &&
           item.verificationStatus === "VERIFIED" &&
           Boolean(item.candidate);
-        const canReject = item.reviewStatus === "PENDING";
         return (
           <article className="scan-result" key={item.id}>
             <div className="scan-result-top">
@@ -805,7 +783,13 @@ function ScanCandidateList({
                 <span className={`run-status status-${outcome.className}`}>
                   {outcome.label}
                 </span>
-                <RunStatus value={item.reviewStatus} />
+                <RunStatus
+                  value={
+                    item.reviewStatus === "REJECTED"
+                      ? "NO_ACTION"
+                      : item.reviewStatus
+                  }
+                />
               </div>
             </div>
             <dl className="scan-result-facts">
@@ -839,7 +823,11 @@ function ScanCandidateList({
               </div>
               <Detail
                 label="Processing status"
-                value={item.scanStatus || "Unavailable"}
+                value={
+                  item.scanStatus === "REJECTED"
+                    ? "NOT_VERIFIED"
+                    : item.scanStatus || "Unavailable"
+                }
               />
               <Detail
                 label="Reason / status explanation"
@@ -927,15 +915,6 @@ function ScanCandidateList({
                   onClick={() => onApprove(item)}
                 >
                   Add to Urban Danger
-                </button>
-              )}
-              {canReject && (
-                <button
-                  className="danger-button"
-                  disabled={reviewingCandidateId === item.id}
-                  onClick={() => onReject(item)}
-                >
-                  Reject
                 </button>
               )}
             </div>
@@ -1214,7 +1193,7 @@ function Runs({ data, token }) {
               <th>Gemini calls</th>
               <th>Candidates</th>
               <th>Verified</th>
-              <th>Rejected</th>
+              <th>Unverified</th>
               <th>Duplicates</th>
               <th>Inserted</th>
               <th>Errors</th>
@@ -1298,20 +1277,18 @@ function Sources({ data }) {
         role="region"
         aria-label="Collection targets"
       >
-        <table>
+        <table className="sources-table">
           <thead>
             <tr>
               <th>Source</th>
               <th>Domain</th>
               <th>Collection URL</th>
               <th>Enabled</th>
-              <th>Latest activity</th>
-              <th>Articles collected</th>
             </tr>
           </thead>
           <tbody>
             {(data || []).map((source) => (
-              <tr key={source.domain}>
+              <tr key={source.seedUrls[0] || source.domain}>
                 <td>
                   <strong>{source.name}</strong>
                 </td>
@@ -1324,13 +1301,11 @@ function Sources({ data }) {
                 <td>
                   <RunStatus value={source.enabled ? "ENABLED" : "DISABLED"} />
                 </td>
-                <td>Not recorded</td>
-                <td>Not recorded</td>
               </tr>
             ))}
             {!data?.length && (
               <tr>
-                <td colSpan="6" className="empty-cell">
+                <td colSpan="4" className="empty-cell">
                   No collection targets are configured.
                 </td>
               </tr>

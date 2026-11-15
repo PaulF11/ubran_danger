@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+process.env.INCIDENT_EXPIRATION_ENABLED = "true";
+process.env.ENABLE_INCIDENT_PERMANENT_EXPIRATION = "true";
 const { createIncidentsController } = require("../src/controllers/incidentsController");
 
 function response() {
@@ -40,6 +42,10 @@ for (const [view, expectedClause] of [
 
     assert.equal(result.statusCode, 200);
     assert.deepEqual(result.body, { success: true, data: [] });
+    assert.match(
+      sql,
+      /DATE_ADD\(DATE\(incidents\.incident_date\), INTERVAL 12 MONTH\) > DATE\(UTC_TIMESTAMP\(\) \+ INTERVAL 8 HOUR\)/,
+    );
     if (expectedClause) {
       assert.match(sql, new RegExp(expectedClause.replace(/[()[\]]/g, "\\$&")));
     } else {

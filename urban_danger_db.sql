@@ -96,7 +96,7 @@ CREATE TABLE incidents (
             verification_status <> 'VERIFIED'
             OR (
                 city IS NOT NULL
-                AND city = 'Taguig City'
+                AND city IN ('Taguig City', 'Pateros')
                 AND source_name IS NOT NULL
                 AND TRIM(source_name) <> ''
                 AND source_url IS NOT NULL

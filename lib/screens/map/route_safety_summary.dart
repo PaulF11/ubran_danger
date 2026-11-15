@@ -142,7 +142,7 @@ class RouteSafetySummary extends StatelessWidget {
                         ),
                         title: Text(incident.category),
                         subtitle: Text(
-                          '${incident.locationDescription ?? incident.barangay ?? 'Taguig City'}'
+                          '${incident.locationDescription ?? incident.barangay ?? 'TAGUIG'}'
                           '  ·  ${incident.severity}'
                           '${_incidentDateLabel(incident.incidentDate)}'
                           '${incident.estimatedMinutesFromStart == null ? '' : '  ·  ETA ${incident.estimatedMinutesFromStart == 0 ? 'now' : '~${incident.estimatedMinutesFromStart} min'} along route'}'

@@ -914,6 +914,7 @@ test("ingestion pipeline never persists failed verification and reports outcomes
   const candidate = validCandidate();
   let persisted = 0;
   const result = await runAutomatedIngestion({
+    now: () => new Date("2025-09-24T00:00:00Z"),
     processedSources: emptyProcessedSources,
     collector: async () => [
       {
@@ -1098,6 +1099,7 @@ test("sufficiently sourced Taguig article can pass extraction and verification w
   let extractorReceivedArticle = false;
   let persisted = 0;
   const result = await runAutomatedIngestion({
+    now: () => new Date("2025-09-24T00:00:00Z"),
     processedSources: emptyProcessedSources,
     collector: async () => [
       {
@@ -1145,6 +1147,7 @@ test("duplicate News5 article candidate never reaches persistence twice", async 
   });
   let persisted = 0;
   const result = await runAutomatedIngestion({
+    now: () => new Date("2025-09-24T00:00:00Z"),
     processedSources: emptyProcessedSources,
     collector: async () => [
       {
@@ -1205,6 +1208,7 @@ test("verified candidate insertion preserves NULL coordinates and never updates 
   const result = await insertVerifiedCandidate(candidate, {
     dbPool: { getConnection: async () => connection },
     verifiedAt: new Date("2026-10-04T00:00:00.000Z"),
+    now: () => new Date("2025-09-24T00:00:00.000Z"),
   });
 
   assert.deepEqual(result, { status: "INSERTED", inserted: true, id: 99 });
@@ -1257,7 +1261,10 @@ test("existing duplicate is rejected before insertion", async () => {
       sourceName: "Manila Standard",
       sourceUrl: "https://manilastandard.net/article/example",
     }),
-    { dbPool: { getConnection: async () => connection } },
+    {
+      dbPool: { getConnection: async () => connection },
+      now: () => new Date("2025-09-24T00:00:00.000Z"),
+    },
   );
 
   assert.deepEqual(result, { status: "DUPLICATE", inserted: false });

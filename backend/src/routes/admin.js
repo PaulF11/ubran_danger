@@ -157,11 +157,6 @@ function createAdminRouter({
     }),
   );
 
-  router.post(
-    "/scan-candidates/:id/reject",
-    reviewAction((id, reviewer) => reviews.rejectCandidate(id, reviewer)),
-  );
-
   return router;
 }
 

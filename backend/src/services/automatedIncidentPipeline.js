@@ -6,6 +6,7 @@ const { isPlausibleIndividualIncident } = require("./incidentPreFilterService");
 const { verifyCandidate } = require("./automatedVerificationService");
 const { insertVerifiedCandidate } = require("./incidentPersistenceService");
 const processedSourceRepository = require("./processedSourceRepository");
+const { isIncidentExpired } = require("./incidentExpirationPolicy");
 
 async function runAutomatedIngestion({
   collector = collectTrustedSources,
@@ -16,6 +17,7 @@ async function runAutomatedIngestion({
   persistVerifiedCandidates = true,
   reviewStore = null,
   runId = null,
+  now = () => new Date(),
 } = {}) {
   const sources = await collector();
   const processedUrls = await processedSources.findProcessed(
@@ -37,6 +39,7 @@ async function runAutomatedIngestion({
     candidatesExtracted: 0,
     candidatesRejected: 0,
     verificationFailures: 0,
+    expiredCandidates: 0,
     duplicates: 0,
     conflicts: 0,
     verifiedCandidates: 0,
@@ -107,6 +110,25 @@ async function runAutomatedIngestion({
       }
 
       summary.candidatesExtracted += 1;
+      const incidentDate =
+        extracted.incidentDate ?? extracted.incident_date ?? null;
+      if (isIncidentExpired(incidentDate, now())) {
+        summary.expiredCandidates += 1;
+        summary.articlesSkipped += 1;
+        await processedSources.recordProcessed(source.url, "PROCESSED");
+        results.push({
+          source: source.url,
+          retrievedAt: source.retrievedAt,
+          status: "EXPIRED",
+          verified: false,
+          reasons: [
+            "The incident occurrence date is outside the 12-month validity period.",
+          ],
+          candidate: null,
+        });
+        continue;
+      }
+
       const verification = await verifier(extracted, verifiedCandidates);
       if (!verification.verified) {
         summary.candidatesRejected += 1;

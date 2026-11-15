@@ -137,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 9),
                 Text(
-                  'TAGUIG CITY + PATEROS  /  VERIFIED DATA',
+                  'TAGUIG  /  VERIFIED DATA',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.primary,
                     letterSpacing: 1.15,
@@ -154,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'A clear view of verified incident activity across Taguig City and Pateros.',
+              'A clear view of verified incident activity across TAGUIG.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -212,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const _AnalyticsMessage(
                   icon: Icons.location_city_outlined,
                   message:
-                      'No verified incidents in Taguig City or Pateros are currently available.',
+                      'No verified incidents in TAGUIG are currently available.',
                 )
               else ...[
                 _AnalyticsSection(
@@ -573,7 +573,7 @@ class _TotalReportsCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Published reports in Taguig City and Pateros',
+                    'Published reports in TAGUIG',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),

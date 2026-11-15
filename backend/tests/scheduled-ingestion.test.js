@@ -381,7 +381,7 @@ test("repeated schedule invocations do not insert duplicate incidents", async ()
               latitude: null,
               longitude: null,
               location_description: "Santa Ana",
-              incident_date: "2025-09-24",
+              incident_date: "2026-10-24",
               severity: "LOW",
               source_url: "https://trusted.example.test/incident-1",
             });
@@ -399,7 +399,7 @@ test("repeated schedule invocations do not insert duplicate incidents", async ()
     latitude: null,
     longitude: null,
     locationDescription: "Santa Ana",
-    incidentDate: "2025-09-24",
+    incidentDate: "2026-10-24",
     severity: "LOW",
     sourceUrl: "https://trusted.example.test/incident-1",
     description: "A verified theft was reported.",

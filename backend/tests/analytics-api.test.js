@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+process.env.INCIDENT_EXPIRATION_ENABLED = "true";
+process.env.ENABLE_INCIDENT_PERMANENT_EXPIRATION = "true";
 const {
   createAnalyticsController,
 } = require("../src/controllers/analyticsController");
@@ -34,5 +36,6 @@ test("public analytics query only verified Taguig and Pateros records", async ()
   for (const sql of queries) {
     assert.match(sql, /incidents\.city IN \('Taguig City', 'Pateros'\)/);
     assert.match(sql, /incidents\.city = 'Pateros'/);
+    assert.match(sql, /DATE_ADD\(DATE\(incidents\.incident_date\), INTERVAL 12 MONTH\)/);
   }
 });

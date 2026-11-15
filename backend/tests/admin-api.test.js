@@ -4,6 +4,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 const express = require("express");
+process.env.INCIDENT_EXPIRATION_ENABLED = "true";
+process.env.ENABLE_INCIDENT_PERMANENT_EXPIRATION = "true";
 const { createAdminRouter } = require("../src/routes/admin");
 const { createAdminAuth } = require("../src/middleware/adminAuth");
 const { createAdminDataService } = require("../src/services/adminDataService");
@@ -257,7 +259,42 @@ test("admin dashboard queries include verified Taguig and Pateros incidents", as
   for (const sql of incidentQueries) {
     assert.match(sql, /incidents\.city IN \('Taguig City', 'Pateros'\)/);
     assert.match(sql, /incidents\.city = 'Pateros'/);
+    assert.match(sql, /DATE_ADD\(DATE\(incidents\.incident_date\), INTERVAL 12 MONTH\)/);
   }
+});
+
+test("configured source reporting preserves all six targets and their collection metadata", () => {
+  const targets = [
+    "https://news.google.com/rss/search?q=Taguig+City+incident",
+    "https://news.google.com/rss/search?q=Pateros+incident",
+    "https://www.gmanetwork.com/news/",
+    "https://www.pna.gov.ph/",
+    "https://www.philstar.com/",
+    "https://www.manilatimes.net/",
+  ];
+  const data = createAdminDataService({
+    environment: { SOURCE_COLLECTION_TARGET_URLS: targets.join(",") },
+  });
+
+  const sources = data.getSources();
+
+  assert.deepEqual(
+    sources.map(({ name }) => name),
+    [
+      "Google News - Taguig incident RSS",
+      "Google News - Pateros incident RSS",
+      "GMA News",
+      "Philippine News Agency (PNA)",
+      "Philstar",
+      "Manila Times",
+    ],
+  );
+  assert.ok(sources.every((source) => source.enabled));
+  assert.deepEqual(
+    sources.map((source) => source.seedUrls[0]),
+    targets,
+  );
+  assert.ok(sources.every((source) => "articlesCollected" in source));
 });
 
 test("dashboard safely handles a missing ingestion history table", async () => {
@@ -423,7 +460,8 @@ test("production CORS allows the exact app origins without credentials", async (
   try {
     for (const origin of [
       process.env.ADMIN_FRONTEND_ORIGIN,
-      "https://urbandangerintel.netlify.app",
+      "https://urbandanger.netlify.app",
+      "https://urban-danger-admin.netlify.app",
       "http://localhost:5191",
       "http://localhost:5173",
     ]) {
