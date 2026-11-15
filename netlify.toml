@@ -10,6 +10,7 @@
 [functions."scheduled-ingestion"]
   schedule = "0 */6 * * *"
 
+# Incident expiration scheduling remains off until controlled MySQL validation.
 [functions.api]
   included_files = ["backend/src/config/aiven-project-ca.pem"]
 
