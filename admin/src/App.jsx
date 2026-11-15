@@ -1033,7 +1033,7 @@ function Incidents({ data, filters, setFilters, onOpen }) {
       <div className="page-intro">
         <div>
           <h2>Verified incident register</h2>
-          <p>Source-backed Taguig records. Provenance is read-only.</p>
+          <p>Source-backed TAGUIG records. Provenance is read-only.</p>
         </div>
         <span className="count-chip">{data?.total ?? "—"} records</span>
       </div>
