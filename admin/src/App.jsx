@@ -31,6 +31,43 @@ async function request(path, token, options = {}) {
   return payload.data;
 }
 
+function scanErrorCount(run) {
+  const errorCount =
+    run.errorCount ??
+    [
+      run.sourcesFailed,
+      run.verificationFailures,
+      run.extractionFailures,
+      run.persistenceFailures,
+      run.rateLimitCount,
+    ].reduce((total, count) => total + Number(count || 0), 0);
+  return Number(errorCount);
+}
+
+function scanStatusFromRun(run) {
+  if (run.status === "FAILED" || run.status === "SKIPPED") return "FAILED";
+  if (run.status === "PARTIAL" || scanErrorCount(run) > 0) return "PARTIAL";
+  return "COMPLETED";
+}
+
+function scanMessageFromRun(run, reportError = "") {
+  const messages = [];
+  if (run.status === "SKIPPED") {
+    messages.push("Another ingestion run already held the shared lock.");
+  }
+  if (scanStatusFromRun(run) === "PARTIAL") {
+    const inserted = run.insertedCount ?? run.insertedIncidents ?? 0;
+    const errors = scanErrorCount(run);
+    const rateLimits = run.rateLimitCount ?? 0;
+    messages.push(
+      `Partial scan: ${inserted} incidents added; ${errors} errors, including ${rateLimits} rate limits. See scan results for details.`,
+    );
+  }
+  if (run.errorMessage) messages.push(run.errorMessage);
+  if (reportError) messages.push(reportError);
+  return messages.join(" ");
+}
+
 function App() {
   const [token, setToken] = useState(() => {
     try {
@@ -121,16 +158,8 @@ function App() {
           setScanStats(run);
           setScanRunId(Number(run.id));
           setScanResults(reports);
-          setScanStatus(
-            run.status === "FAILED" || run.status === "SKIPPED"
-              ? "FAILED"
-              : "COMPLETED",
-          );
-          setScanMessage(
-            run.status === "SKIPPED"
-              ? "Another ingestion run already held the shared lock."
-              : run.errorMessage || reportError,
-          );
+          setScanStatus(scanStatusFromRun(run));
+          setScanMessage(scanMessageFromRun(run, reportError));
           if (view === "dashboard") {
             const dashboard = await request("/dashboard", token);
             if (active) setData(dashboard);
@@ -194,12 +223,8 @@ function App() {
         setScanStats(run);
         setScanRunId(Number(run.id));
         setScanResults(reports);
-        setScanStatus(
-          run.status === "FAILED" || run.status === "SKIPPED"
-            ? "FAILED"
-            : "COMPLETED",
-        );
-        setScanMessage(run.errorMessage || "");
+        setScanStatus(scanStatusFromRun(run));
+        setScanMessage(scanMessageFromRun(run));
       } catch (failure) {
         if (active) setError(failure.message);
       }
@@ -252,13 +277,17 @@ function App() {
         return;
       }
       setScanStats(result.summary || null);
-      setScanStatus(result.status === "COMPLETED" ? "COMPLETED" : "FAILED");
+      const completedRun = {
+        ...result.summary,
+        ...result,
+      };
+      setScanStatus(scanStatusFromRun(completedRun));
       setScanMessage(
         result.category === "already_running"
           ? "Another ingestion run already held the shared lock."
           : result.category
             ? `Scan failed (${result.category}).`
-            : "",
+            : scanMessageFromRun(completedRun),
       );
       if (result.status === "COMPLETED" && result.runId) {
         setScanRunId(Number(result.runId));
@@ -544,6 +573,10 @@ function Dashboard({
             <Detail
               label="Verified incidents"
               value={scanStats.verifiedCandidates ?? scanStats.verifiedCount}
+            />
+            <Detail
+              label="Incidents added"
+              value={scanStats.insertedIncidents ?? scanStats.insertedCount}
             />
             <Detail
               label="Unverified candidates"
