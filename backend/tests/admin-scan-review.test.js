@@ -84,6 +84,7 @@ function createReviewDatabase() {
           verificationStatus,
           reasons,
           candidate,
+          reviewStatus,
         ] = parameters;
         const id = nextId++;
         rows.set(id, {
@@ -98,7 +99,7 @@ function createReviewDatabase() {
           verificationStatus,
           reasons: JSON.parse(reasons),
           candidate: candidate ? JSON.parse(candidate) : null,
-          reviewStatus: "PENDING",
+          reviewStatus,
           incidentId: null,
           reviewedBy: null,
           reviewedAt: null,
@@ -121,7 +122,7 @@ function createReviewDatabase() {
           const row = rows.get(Number(parameters[0]));
           if (
             !row ||
-            row.reviewStatus !== "PENDING" ||
+            row.reviewStatus !== "READY" ||
             row.scanStatus !== "VERIFIED"
           ) {
             return [{ affectedRows: 0 }];
@@ -137,17 +138,18 @@ function createReviewDatabase() {
           row.verificationStatus = "EXPIRED";
           row.reasons = JSON.parse(parameters[0]);
           row.candidate = null;
+          row.reviewStatus = "NOT_ACTIONABLE";
         } else if (sql.includes("SET scan_status = ?")) {
           [row.scanStatus, row.verificationStatus] = parameters;
           row.reasons = JSON.parse(parameters[2]);
-          row.reviewStatus = "PENDING";
+          row.reviewStatus = "NOT_ACTIONABLE";
         } else if (sql.includes("SET review_status = ?, scan_status = ?")) {
           [row.reviewStatus, row.scanStatus] = parameters;
         } else if (sql.includes("SET review_status = 'APPROVED'")) {
           [row.incidentId, row.reviewedBy, row.reviewedAt] = parameters;
           row.reviewStatus = "APPROVED";
-        } else if (sql.includes("SET review_status = 'PENDING'")) {
-          row.reviewStatus = "PENDING";
+        } else if (sql.includes("SET review_status = 'READY'")) {
+          row.reviewStatus = "READY";
         }
         return [{ affectedRows: 1 }];
       }
@@ -253,7 +255,86 @@ test("scan review store preserves source and extracted details", async () => {
     result.candidate.locationDescription,
     candidate.locationDescription,
   );
-  assert.equal(result.reviewStatus, "PENDING");
+  assert.equal(result.reviewStatus, "READY");
+});
+
+test("admin scan reports expose explicit outcomes instead of pending states", async () => {
+  const database = createReviewDatabase();
+  const service = createAdminScanReviewService({ database });
+
+  await service.saveRunCandidates(23, [
+    {
+      sourceUrl: "https://www.gmanetwork.com/news/test-fixture/rate-limited/",
+      status: "PENDING_REVIEW",
+      reasons: ["Provider rate limit HTTP 429."],
+    },
+    {
+      sourceUrl: validCandidate().sourceUrl,
+      status: "VERIFIED",
+      candidate: validCandidate(),
+    },
+    {
+      sourceUrl: "https://www.gmanetwork.com/news/test-fixture/failed/",
+      status: "FAILED",
+    },
+  ]);
+
+  const reports = await service.listRunCandidates(23);
+  assert.deepEqual(
+    reports.map(({ scanStatus, verificationStatus, reviewStatus }) => ({
+      scanStatus,
+      verificationStatus,
+      reviewStatus,
+    })),
+    [
+      {
+        scanStatus: "UNVERIFIED",
+        verificationStatus: "UNVERIFIED",
+        reviewStatus: "NOT_ACTIONABLE",
+      },
+      {
+        scanStatus: "VERIFIED",
+        verificationStatus: "VERIFIED",
+        reviewStatus: "READY",
+      },
+      {
+        scanStatus: "FAILED",
+        verificationStatus: "FAILED",
+        reviewStatus: "NOT_ACTIONABLE",
+      },
+    ],
+  );
+  assert.equal(JSON.stringify(reports).includes("PENDING"), false);
+});
+
+test("failed re-verification makes a candidate non-actionable and unverified", async () => {
+  const database = createReviewDatabase();
+  const service = createAdminScanReviewService({
+    database,
+    verifier: async () => ({
+      verified: false,
+      status: "PENDING_REVIEW",
+      reasons: ["Source verification could not be completed."],
+    }),
+  });
+  const candidate = validCandidate();
+  await service.saveRunCandidates(24, [
+    {
+      sourceUrl: candidate.sourceUrl,
+      status: "VERIFIED",
+      candidate,
+    },
+  ]);
+
+  const result = await service.approveCandidate(1, "admin-1");
+  const [report] = await service.listRunCandidates(24);
+
+  assert.equal(result.reviewStatus, "NOT_ACTIONABLE");
+  assert.equal(result.verificationStatus, "UNVERIFIED");
+  assert.equal(report.reviewStatus, "NOT_ACTIONABLE");
+  assert.equal(report.scanStatus, "UNVERIFIED");
+  assert.equal(report.verificationStatus, "UNVERIFIED");
+  assert.equal(JSON.stringify(report).includes("PENDING"), false);
 });
 
 test("empty scan candidate results are returned as a successful empty list", async () => {

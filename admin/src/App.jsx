@@ -678,10 +678,13 @@ function ScanCandidateList({
     if (/\b408\b|\b5\d{2}\b|timeout|timed out|abort|database|mysql|connection/i.test(reasonText)) {
       return { label: "Retry", className: "retry" };
     }
-    if (item.candidate && status === "PENDING_REVIEW") {
+    if (
+      item.candidate &&
+      (status === "UNVERIFIED" || status === "PENDING_REVIEW")
+    ) {
       return { label: "Candidate", className: "candidate" };
     }
-    if (status === "PENDING_REVIEW") {
+    if (status === "UNVERIFIED" || status === "PENDING_REVIEW") {
       return { label: "Error", className: "error" };
     }
     return {
@@ -746,11 +749,27 @@ function ScanCandidateList({
     const labels = {
       VERIFIED: "Verified",
       REJECTED: "Not verified",
-      PENDING_REVIEW: "Pending review",
+      UNVERIFIED: "Unverified",
+      PENDING_REVIEW: "Unverified",
       NOT_AN_INCIDENT: "Not an incident",
       SKIPPED_PROCESSED: "Skipped (already processed)",
     };
     return labels[status] || "Unavailable";
+  }
+
+  function reviewOutcome(item) {
+    const status = String(item.reviewStatus || "")
+      .trim()
+      .toUpperCase();
+    if (status === "PENDING") {
+      return item.verificationStatus === "VERIFIED" && item.candidate
+        ? "READY"
+        : null;
+    }
+    if (status === "NOT_ACTIONABLE") return null;
+    if (status === "APPROVING") return "ADDING";
+    if (status === "REJECTED") return "NO_ACTION";
+    return status || null;
   }
 
   return (
@@ -765,8 +784,9 @@ function ScanCandidateList({
         const candidate = item.candidate || {};
         const outcome = reportOutcome(item);
         const attempted = extractionAttempt(item);
+        const reviewStatus = reviewOutcome(item);
         const canApprove =
-          item.reviewStatus === "PENDING" &&
+          (item.reviewStatus === "READY" || item.reviewStatus === "PENDING") &&
           item.verificationStatus === "VERIFIED" &&
           Boolean(item.candidate);
         return (
@@ -783,13 +803,7 @@ function ScanCandidateList({
                 <span className={`run-status status-${outcome.className}`}>
                   {outcome.label}
                 </span>
-                <RunStatus
-                  value={
-                    item.reviewStatus === "REJECTED"
-                      ? "NO_ACTION"
-                      : item.reviewStatus
-                  }
-                />
+                {reviewStatus && <RunStatus value={reviewStatus} />}
               </div>
             </div>
             <dl className="scan-result-facts">
@@ -826,7 +840,9 @@ function ScanCandidateList({
                 value={
                   item.scanStatus === "REJECTED"
                     ? "NOT_VERIFIED"
-                    : item.scanStatus || "Unavailable"
+                    : item.scanStatus === "PENDING_REVIEW"
+                      ? "UNVERIFIED"
+                      : item.scanStatus || "Unavailable"
                 }
               />
               <Detail

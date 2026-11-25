@@ -26,6 +26,10 @@ function parseJson(value, fallback) {
   }
 }
 
+function adminScanStatus(status) {
+  return !status || status === "PENDING_REVIEW" ? "UNVERIFIED" : status;
+}
+
 function toReviewCandidate(row) {
   return {
     id: row.id,
@@ -58,12 +62,17 @@ function createAdminScanReviewService({
       const sourceUrl = result.sourceUrl || result.source;
       if (typeof sourceUrl !== "string" || !sourceUrl) continue;
 
+      const status = adminScanStatus(result.status);
+      const reviewStatus =
+        status === "VERIFIED" && result.candidate
+          ? "READY"
+          : "NOT_ACTIONABLE";
       await database.execute(
         `INSERT INTO admin_scan_candidates
           (ingestion_run_id, source_url_hash, source_url, title, source_name,
            source_published_at, retrieved_at, scan_status,
-           verification_status, reasons_json, candidate_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           verification_status, reasons_json, candidate_json, review_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            title = VALUES(title), source_name = VALUES(source_name),
            source_published_at = VALUES(source_published_at),
@@ -80,10 +89,11 @@ function createAdminScanReviewService({
           result.sourceName || null,
           result.sourcePublishedAt || null,
           result.retrievedAt || null,
-          result.status || "PENDING_REVIEW",
-          result.status || "PENDING_REVIEW",
+          status,
+          status,
           JSON.stringify(result.reasons || []),
           result.candidate ? JSON.stringify(result.candidate) : null,
+          reviewStatus,
         ],
       );
     }
@@ -146,19 +156,20 @@ function createAdminScanReviewService({
       await database.execute(
         `UPDATE admin_scan_candidates
          SET scan_status = 'EXPIRED', verification_status = 'EXPIRED',
-             reasons_json = ?, candidate_json = NULL
-         WHERE id = ? AND review_status = 'PENDING'`,
+             reasons_json = ?, candidate_json = NULL,
+             review_status = 'NOT_ACTIONABLE'
+         WHERE id = ? AND review_status = 'READY'`,
         [JSON.stringify(reasons), id],
       );
       return {
         id: Number(id),
-        reviewStatus: "PENDING",
+        reviewStatus: "NOT_ACTIONABLE",
         verificationStatus: "EXPIRED",
         reasons,
       };
     }
     if (
-      candidateRecord.reviewStatus !== "PENDING" ||
+      candidateRecord.reviewStatus !== "READY" ||
       candidateRecord.verificationStatus !== "VERIFIED" ||
       !candidateRecord.candidate
     ) {
@@ -171,7 +182,7 @@ function createAdminScanReviewService({
 
     const [claim] = await database.execute(
       `UPDATE admin_scan_candidates SET review_status = 'APPROVING'
-       WHERE id = ? AND review_status = 'PENDING'
+       WHERE id = ? AND review_status = 'READY'
          AND verification_status = 'VERIFIED'`,
       [id],
     );
@@ -189,19 +200,19 @@ function createAdminScanReviewService({
         await database.execute(
           `UPDATE admin_scan_candidates
            SET scan_status = ?, verification_status = ?, reasons_json = ?,
-               review_status = 'PENDING'
+               review_status = 'NOT_ACTIONABLE'
            WHERE id = ? AND review_status = 'APPROVING'`,
           [
-            verification.status,
-            verification.status,
+            adminScanStatus(verification.status),
+            adminScanStatus(verification.status),
             JSON.stringify(verification.reasons || []),
             id,
           ],
         );
         return {
           id: Number(id),
-          reviewStatus: "PENDING",
-          verificationStatus: verification.status,
+          reviewStatus: "NOT_ACTIONABLE",
+          verificationStatus: adminScanStatus(verification.status),
           reasons: verification.reasons || [],
         };
       }
@@ -212,7 +223,7 @@ function createAdminScanReviewService({
           persistence.status,
         )
           ? persistence.status
-          : "PENDING";
+          : "NOT_ACTIONABLE";
         await database.execute(
           `UPDATE admin_scan_candidates SET review_status = ?, scan_status = ?
            WHERE id = ? AND review_status = 'APPROVING'`,
@@ -240,7 +251,7 @@ function createAdminScanReviewService({
       };
     } catch (error) {
       await database.execute(
-        `UPDATE admin_scan_candidates SET review_status = 'PENDING'
+        `UPDATE admin_scan_candidates SET review_status = 'READY'
          WHERE id = ? AND review_status = 'APPROVING'`,
         [id],
       );

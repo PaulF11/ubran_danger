@@ -318,7 +318,8 @@ button {
   overflow-wrap: anywhere;
 }
 .status-verified,
-.status-candidate {
+.status-candidate,
+.status-ready {
   color: #286b4c;
   background: #e6f2e9;
 }
