@@ -2,10 +2,14 @@
 
 const { validateCandidate } = require("./incidentValidationService");
 const { findConflict, isDuplicate } = require("./incidentDeduplicationService");
+const {
+  isRateLimitError,
+  isRetryableError,
+} = require("./ingestionError");
 
-async function checkSourceUrl(sourceUrl, sourceReviewed) {
+async function checkSourceUrl(sourceUrl, sourceReviewed, fetchImpl = fetch) {
   try {
-    const response = await fetch(sourceUrl, {
+    const response = await fetchImpl(sourceUrl, {
       method: "HEAD",
       redirect: "manual",
       headers: { "user-agent": "UrbanDangerSourceVerifier/1.0" },
@@ -13,7 +17,7 @@ async function checkSourceUrl(sourceUrl, sourceReviewed) {
     });
 
     if (response.status === 405 || response.status === 501) {
-      const getResponse = await fetch(sourceUrl, {
+      const getResponse = await fetchImpl(sourceUrl, {
         method: "GET",
         redirect: "manual",
         headers: {
@@ -29,7 +33,8 @@ async function checkSourceUrl(sourceUrl, sourceReviewed) {
   } catch (error) {
     return {
       exists: false,
-      pending: true,
+      status: isRateLimitError(error) ? "RATE_LIMITED" : undefined,
+      retryable: isRetryableError(error),
       reason: `Source URL could not be checked: ${error.message || "network error"}`,
     };
   }
@@ -41,20 +46,27 @@ function sourceResponseResult(status, sourceReviewed) {
     return {
       exists: true,
       reason:
-        "Publisher blocks automated access; the article was manually reviewed.",
+        "Publisher blocks automated access; the trusted feed provided the article content.",
     };
   }
   if (status === 404 || status === 410) {
     return {
       exists: false,
-      pending: false,
       reason: `Source URL returned HTTP ${status}.`,
+    };
+  }
+  if (status === 429) {
+    return {
+      exists: false,
+      status: "RATE_LIMITED",
+      retryable: true,
+      reason: "Source publisher rate-limited the verification request (HTTP 429).",
     };
   }
   return {
     exists: false,
-    pending: true,
-    reason: `Source URL returned HTTP ${status}; manual review is required.`,
+    retryable: status === 408 || status >= 500,
+    reason: `Source URL returned HTTP ${status}; source verification could not be completed.`,
   };
 }
 
@@ -79,7 +91,8 @@ async function verifyCandidate(
   );
   if (!sourceCheck.exists) {
     return {
-      status: sourceCheck.pending ? "PENDING_REVIEW" : "REJECTED",
+      status: sourceCheck.status || (sourceCheck.retryable ? "VERIFICATION_FAILED" : "REJECTED"),
+      retryable: sourceCheck.retryable === true,
       verified: false,
       reasons: [sourceCheck.reason],
     };
@@ -87,10 +100,10 @@ async function verifyCandidate(
 
   if (findConflict(candidate, existingCandidates)) {
     return {
-      status: "PENDING_REVIEW",
+      status: "VERIFICATION_FAILED",
       verified: false,
       reasons: [
-        "Conflicting category or severity exists for the same incident date and location.",
+        "Conflicting category or severity exists for the same incident date and location; candidate was not published.",
       ],
     };
   }

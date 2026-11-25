@@ -8,7 +8,8 @@ const path = require("node:path");
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.LOCAL_PREVIEW_PORT || 5190);
 const BUILD_ROOT = path.resolve(__dirname, "..", "build", "web");
-const API_ORIGIN = "https://urbandanger.netlify.app";
+const API_ORIGIN =
+  process.env.LOCAL_API_ORIGIN || "https://urbandanger.netlify.app";
 const LOCAL_ORIGIN = `http://${HOST}:${PORT}`;
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -45,9 +46,11 @@ function proxyApi(req, res, requestUrl) {
   }
   delete headers.host;
 
-  const upstream = https.request(
+  const transport = upstreamUrl.protocol === "https:" ? https : http;
+  const upstream = transport.request(
     {
       hostname: upstreamUrl.hostname,
+      port: upstreamUrl.port || undefined,
       method: req.method,
       path: upstreamUrl.pathname + upstreamUrl.search,
       headers,

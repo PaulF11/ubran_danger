@@ -7,6 +7,7 @@ const { verifyCandidate } = require("./automatedVerificationService");
 const { insertVerifiedCandidate } = require("./incidentPersistenceService");
 const processedSourceRepository = require("./processedSourceRepository");
 const { isIncidentExpired } = require("./incidentExpirationPolicy");
+const { isRetryableError, isRateLimitError } = require("./ingestionError");
 
 async function runAutomatedIngestion({
   collector = collectTrustedSources,
@@ -14,8 +15,7 @@ async function runAutomatedIngestion({
   verifier = verifyCandidate,
   persister = insertVerifiedCandidate,
   processedSources = processedSourceRepository,
-  persistVerifiedCandidates = true,
-  reviewStore = null,
+  scanResultStore = null,
   runId = null,
   now = () => new Date(),
 } = {}) {
@@ -34,6 +34,8 @@ async function runAutomatedIngestion({
     articlesSkipped: 0,
     geminiRequests: 0,
     rateLimitCount: 0,
+    extractionFailures: 0,
+    persistenceFailures: 0,
     articlesProcessed: 0,
     preFiltered: 0,
     candidatesExtracted: 0,
@@ -82,13 +84,15 @@ async function runAutomatedIngestion({
       results.push({
         source: source.url,
         retrievedAt: source.retrievedAt,
-        status: "PENDING_REVIEW",
+        status: "RATE_LIMITED",
         verified: false,
-        reasons: ["Extraction paused after the provider rate limit."],
+        retryable: true,
+        reasons: ["Extraction paused after the provider rate limit; retry in a later run."],
       });
       continue;
     }
 
+    let stage = "extraction";
     try {
       summary.geminiRequests += 1;
       const extracted = await extractor(source.content, {
@@ -129,16 +133,31 @@ async function runAutomatedIngestion({
         continue;
       }
 
+      stage = "verification";
       const verification = await verifier(extracted, verifiedCandidates);
-      if (!verification.verified) {
+      if (verification.status === "RATE_LIMITED") {
+        summary.rateLimitCount += 1;
+        rateLimitedForRun = true;
+      } else if (
+        !verification.verified &&
+        verification.status === "REJECTED"
+      ) {
         summary.candidatesRejected += 1;
+      } else if (
+        !verification.verified &&
+        verification.status !== "RATE_LIMITED"
+      ) {
         summary.verificationFailures += 1;
       }
       const result = {
         source: source.url,
         retrievedAt: source.retrievedAt,
         status: verification.status,
+        verificationStatus: verification.status,
         verified: verification.verified,
+        retryable:
+          verification.retryable === true ||
+          verification.status === "RATE_LIMITED",
         reasons: verification.reasons || [],
         candidate: extracted,
       };
@@ -146,48 +165,64 @@ async function runAutomatedIngestion({
       if (verification.verified) {
         verifiedCandidates.push(extracted);
         summary.verifiedCandidates += 1;
-        if (persistVerifiedCandidates) {
-          const persistence = await persister(
-            verification.normalized || extracted,
-          );
-          result.persistence = persistence.status;
-          if (persistence.status === "INSERTED")
-            summary.insertedIncidents += 1;
-          if (persistence.status === "DUPLICATE") summary.duplicates += 1;
-          if (persistence.status === "CONFLICT") summary.conflicts += 1;
-        } else {
-          result.persistence = "PENDING_REVIEW";
+        stage = "persistence";
+        const persistence = await persister(
+          verification.normalized || extracted,
+        );
+        result.persistence = persistence.status;
+        if (persistence.status === "INSERTED") {
+          summary.insertedIncidents += 1;
+          result.status = "VERIFIED";
+          result.verificationStatus = "VERIFIED";
+        }
+        if (persistence.status === "DUPLICATE") {
+          summary.duplicates += 1;
+          result.status = "DUPLICATE";
+        }
+        if (persistence.status === "CONFLICT") {
+          summary.conflicts += 1;
+          result.status = "CONFLICT";
+        }
+        if (!["INSERTED", "DUPLICATE", "CONFLICT"].includes(persistence.status)) {
+          result.status = persistence.status;
         }
       }
 
-      await processedSources.recordProcessed(source.url, "PROCESSED");
+      await processedSources.recordProcessed(
+        source.url,
+        verification.retryable === true ||
+          verification.status === "RATE_LIMITED"
+          ? "RETRY"
+          : "PROCESSED",
+      );
       results.push(result);
     } catch (error) {
-      const rateLimited = /429|rate-limit/i.test(error.message || "");
+      const rateLimited = isRateLimitError(error);
       if (rateLimited) {
         summary.rateLimitCount += 1;
         rateLimitedForRun = true;
       }
-      const retryableHttpFailure = /\bHTTP\s+(?:408|5\d{2})\b/i.test(
-        error.message || "",
-      );
-      const retry =
-        rateLimited ||
-        retryableHttpFailure ||
-        /timeout|timed out|abort|database|mysql|connection/i.test(
-          error.message || "",
-        );
+      const retry = rateLimited || isRetryableError(error);
+      if (!rateLimited && stage === "extraction")
+        summary.extractionFailures += 1;
+      if (!rateLimited && stage === "persistence")
+        summary.persistenceFailures += 1;
       await processedSources.recordProcessed(
         source.url,
         retry ? "RETRY" : "PROCESSED",
       );
-      summary.candidatesRejected += 1;
-      summary.verificationFailures += 1;
       results.push({
         source: source.url,
         retrievedAt: source.retrievedAt,
-        status: "PENDING_REVIEW",
+        status: rateLimited
+          ? "RATE_LIMITED"
+          : stage === "extraction"
+            ? "EXTRACTION_FAILED"
+            : stage === "verification"
+              ? "VERIFICATION_FAILED"
+              : "PERSISTENCE_FAILED",
         verified: false,
+        retryable: retry,
         reasons: [error.message || "Extraction could not be completed."],
       });
     }
@@ -204,12 +239,17 @@ async function runAutomatedIngestion({
     };
   });
 
-  if (reviewStore && runId !== null && runId !== undefined) {
-    await reviewStore.saveRunCandidates(runId, reportResults);
+  if (scanResultStore && runId !== null && runId !== undefined) {
+    await scanResultStore.saveRunResults(runId, reportResults);
   }
 
   return {
     ...summary,
+    processingFailures:
+      summary.extractionFailures +
+      summary.persistenceFailures +
+      summary.verificationFailures +
+      summary.rateLimitCount,
     results: reportResults,
   };
 }

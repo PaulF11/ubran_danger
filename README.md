@@ -205,8 +205,12 @@ The admin API is mounted under `/api/admin`:
 - `GET /ingestion-runs` and `GET /ingestion-runs/:id` return recorded run history.
 - `GET /sources` returns the configured trusted-source allowlist.
 - `GET /system-status` reports API, database, history, Gemini configuration, and scheduler configuration state.
-- `GET /scan-candidates?runId=...` returns non-public candidates for an ingestion run.
-- `POST /scan-candidates/:id/approve` and `/reject` record an explicit review decision.
+- `GET /scan-results?runId=...` returns read-only outcomes from the automated scan.
+
+Manual scans use the same validation, verification, deduplication, and
+persistence path as scheduled scans. Verified incidents are persisted
+automatically; unsuccessful or retryable outcomes remain scan results and do
+not wait for administrator approval.
 
 All endpoints other than login require the bearer token. `POST /api/auth/login`
 accepts an existing user's email and password, verifies the bcrypt password hash
@@ -234,7 +238,7 @@ No local backend, MySQL configuration, or migration is required for that setup.
 ### Optional local backend/database development
 
 1. Copy `backend/.env.example` to `backend/.env` and configure the existing backend values plus `JWT_SECRET` and the legacy admin variables if that login is still needed. Generate unique signing secrets locally, for example with `openssl rand -base64 48`; never commit their values.
-2. Apply `backend/migrations/003_ingestion_runs.sql`, then `backend/migrations/004_processed_sources_and_scan_metrics.sql`, then `backend/migrations/005_admin_scan_candidates.sql` to the development database. These additive migrations create run history, a hashed source-URL registry, scan metrics, and non-public review candidates; migration 004 safely skips columns that already exist and seeds only URLs from existing VERIFIED incidents without modifying incident rows. Apply them only after reviewing the target schema and taking the project's normal backup precautions.
+2. Apply `backend/migrations/003_ingestion_runs.sql`, then `backend/migrations/004_processed_sources_and_scan_metrics.sql`, then `backend/migrations/005_admin_scan_candidates.sql`, followed by `backend/migrations/009_automated_scan_results.sql`, to a development database. Migration 009 converts legacy review-candidate storage into read-only scan results and removes administrator approval columns. Migration 004 safely skips existing columns and seeds only URLs from existing VERIFIED incidents without modifying incident rows. Apply migrations only after reviewing the target schema and taking the project's normal backup precautions.
 3. Start the API with `npm --prefix backend start`.
 4. In `admin/`, copy `.env.example` to `.env.local`, set `VITE_API_BASE_URL` to the local backend origin, then run `npm install` and `npm run dev`. Production builds use the public API URL in `.env.production`; it contains no server secret.
 5. Admin clients can sign in with `POST /api/auth/login` using an existing ADMIN user's email and password, then send `Authorization: Bearer <token>` to `/api/admin` endpoints. Tokens expire after 30 minutes. The existing `/api/admin/login` remains supported.
@@ -257,8 +261,11 @@ site and no upstream URL in client code.
 Configure `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`,
 `ADMIN_TOKEN_SECRET`, and `ADMIN_FRONTEND_ORIGIN` only on the public site's
 server environment; add the admin origin to its backend CORS allowlist. Apply
-migrations `003`, `004`, and `005` to the production database through the normal database-change
-procedure before releasing backend code that reads/writes the new tables. Never put
+the required database migrations, including `009_automated_scan_results.sql`
+after `005_admin_scan_candidates.sql`, through the normal database-change
+procedure before releasing backend code that reads or writes those tables. The
+migration preserves scan records while converting the legacy review table to
+read-only scan results. Never put
 backend secrets in either frontend site's build variables. The public site's
 scheduled ingestion functions, if enabled, require their separate server-side
 ingestion/database configuration. No database migration is performed by this
@@ -297,8 +304,8 @@ schedule while live MySQL cleanup remains unverified. When explicitly enabled,
 it permanently deletes valid incidents on or after the calendar-date
 anniversary 12 months after `incident_date`. Public and admin incident queries
 exclude expired rows only when expiration is explicitly enabled. The cleanup
-uses a MySQL advisory lock and transactions, deletes linked scan-candidate
-copies, relies on the incident/source-reference cascade, and deletes a location
+uses a MySQL advisory lock and transactions, deletes linked scan-result
+records, relies on the incident/source-reference cascade, and deletes a location
 only when no incident still references it. Expired news candidates are removed
 from scan history; processed-source identifiers remain so the same URL is not
 retried and reintroduced. Missing or invalid occurrence dates are not deleted;

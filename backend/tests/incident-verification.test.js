@@ -12,6 +12,7 @@ const {
   isDuplicate,
 } = require("../src/services/incidentDeduplicationService");
 const {
+  checkSourceUrl,
   verifyCandidate,
 } = require("../src/services/automatedVerificationService");
 const {
@@ -223,13 +224,27 @@ test("source URL failures do not silently verify candidates", async () => {
   const result = await verifyCandidate(validCandidate(), [], {
     sourceUrlCheck: async () => ({
       exists: false,
-      pending: false,
       reason: "HTTP 404",
     }),
   });
 
   assert.equal(result.status, "REJECTED");
   assert.equal(result.verified, false);
+});
+
+test("source publisher rate limits remain retryable without verifying candidates", async () => {
+  const sourceCheck = await checkSourceUrl(
+    validCandidate().sourceUrl,
+    true,
+    async () => ({ status: 429 }),
+  );
+  const verification = await verifyCandidate(validCandidate(), [], {
+    sourceUrlCheck: async () => sourceCheck,
+  });
+
+  assert.equal(verification.status, "RATE_LIMITED");
+  assert.equal(verification.retryable, true);
+  assert.equal(verification.verified, false);
 });
 
 test("same event is deduplicated but distinct source-described locations are not", () => {
@@ -256,7 +271,7 @@ test("conflicting severity at the same incident location is flagged", () => {
   assert.equal(findConflict(candidate, [existing]), true);
 });
 
-test("verification leaves conflicting records pending instead of treating them as duplicates", async () => {
+test("verification reports conflicting records as failures instead of treating them as duplicates", async () => {
   const existing = validCandidate({ severity: "HIGH" });
   const candidate = validCandidate({
     severity: "MEDIUM",
@@ -273,7 +288,7 @@ test("verification leaves conflicting records pending instead of treating them a
     sourceUrlCheck: async () => ({ exists: true }),
   });
 
-  assert.equal(result.status, "PENDING_REVIEW");
+  assert.equal(result.status, "VERIFICATION_FAILED");
   assert.match(result.reasons[0], /Conflicting/);
 });
 
@@ -855,7 +870,7 @@ test("controlled GMA and News5 fixtures exercise ingestion without external serv
       [summary.results[0].candidate],
       { sourceUrlCheck: controlledSourceUrlCheck },
     );
-    assert.equal(conflictResult.status, "PENDING_REVIEW");
+    assert.equal(conflictResult.status, "VERIFICATION_FAILED");
     assert.match(conflictResult.reasons[0], /Conflicting/);
 
     const unavailableSourceResult = await verifyCandidate(
@@ -864,12 +879,12 @@ test("controlled GMA and News5 fixtures exercise ingestion without external serv
       {
         sourceUrlCheck: async () => ({
           exists: false,
-          pending: true,
+          retryable: true,
           reason: "TEST/DEVELOPMENT controlled source check result.",
         }),
       },
     );
-    assert.equal(unavailableSourceResult.status, "PENDING_REVIEW");
+    assert.equal(unavailableSourceResult.status, "VERIFICATION_FAILED");
 
     assert.equal(
       isPlausibleIndividualIncident({
@@ -941,7 +956,7 @@ test("ingestion pipeline never persists failed verification and reports outcomes
       if (existing.length > 0) {
         return {
           verified: false,
-          status: "PENDING_REVIEW",
+          status: "VERIFICATION_FAILED",
           reasons: ["verification failed"],
         };
       }

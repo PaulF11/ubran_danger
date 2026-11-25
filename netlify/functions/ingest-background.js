@@ -46,9 +46,9 @@ function createBackgroundHandler({
     }
 
     try {
-      const reviewStore =
+      const scanResultStore =
         runSource === "MANUAL"
-          ? require("../../backend/src/services/adminScanReviewService").createAdminScanReviewService()
+          ? require("../../backend/src/services/ingestionScanResultService").createIngestionScanResultService()
           : null;
       const result = runIngestion
         ? await runIngestion()
@@ -61,8 +61,7 @@ function createBackgroundHandler({
                 ? ({ runId }) =>
                     pipeline({
                       runId,
-                      persistVerifiedCandidates: false,
-                      reviewStore,
+                      scanResultStore,
                     })
                 : pipeline,
             logger,

@@ -58,14 +58,14 @@ deployment architecture was changed. The public application's bundled
 `/api` rewrite is retained for compatible deployments, but the Flutter
 production build uses the canonical API origin directly.
 
-The implementation is a real multi-part system, not a paper-only prototype. The public Flutter app, React/Vite admin dashboard, Express API, Netlify functions, MySQL schema/migrations, Gemini extraction provider, trusted-source collector, validation, deduplication, administrator review, OSRM routing, and route-exposure analysis are present.
+The implementation is a real multi-part system, not a paper-only prototype. The public Flutter app, React/Vite admin dashboard, Express API, Netlify functions, MySQL schema/migrations, Gemini extraction provider, trusted-source collector, validation, deduplication, automated verification, OSRM routing, and route-exposure analysis are present.
 
 The largest paper discrepancies are architectural:
 
 - Route intelligence is computed per request in `routeIntelligenceService.js`; there are no `Route`, `RouteIncident`, or `RouteIntelligence` MySQL tables and no route-history persistence.
 - `TrustedSource` is configuration/collector data, not a dedicated database entity.
-- `RawArticle` is not a dedicated raw-article table. Processed URL state is stored in `ingestion_processed_sources`, while scan candidate results are stored in `admin_scan_candidates`.
-- Automated Gemini extraction is not truth confirmation. The code extracts structured candidate fields, then deterministic validation, URL checking, duplicate/conflict checks, and, for manual scans, administrator review determine inclusion.
+- `RawArticle` is not a dedicated raw-article table. Processed URL state is stored in `ingestion_processed_sources`, while scan outcomes are stored in `ingestion_scan_results`.
+- Automated Gemini extraction is not truth confirmation. The code extracts structured candidate fields, then deterministic validation, URL checking, duplicate/conflict checks, and automated persistence determine inclusion.
 - Geographic scope in implementation is `Taguig City` plus `Pateros` for route/map validation, while public system status still says `Taguig City, Philippines`. This needs a paper/system wording decision.
 - Production browser testing showed the admin login page. The public configured site stayed in its loading state, so live data, map, analytics, route, and API responses remain unverified in this audit.
 

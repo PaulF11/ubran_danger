@@ -381,13 +381,6 @@ button {
   opacity: 0.55;
   cursor: wait;
 }
-.approval-dialog > .muted {
-  margin: 0 0 16px;
-  line-height: 1.6;
-}
-.approval-dialog .primary-button {
-  justify-content: center;
-}
 .metric,
 .panel {
   border: 1px solid var(--line);

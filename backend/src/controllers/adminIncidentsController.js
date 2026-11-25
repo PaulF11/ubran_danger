@@ -6,35 +6,8 @@ const {
   TAGUIG_BARANGAY_SQL,
 } = require("../constants/taguigBarangays");
 
-const VERIFICATION_STATUSES = [
-  "PENDING_REVIEW",
-  "VERIFIED",
-  "REJECTED",
-  "ARCHIVED",
-];
-const ALLOWED_TRANSITIONS = {
-  PENDING_REVIEW: ["VERIFIED", "REJECTED", "ARCHIVED"],
-  VERIFIED: ["REJECTED", "ARCHIVED"],
-  REJECTED: ["PENDING_REVIEW", "ARCHIVED"],
-  ARCHIVED: ["PENDING_REVIEW"],
-};
-
 exports.getIncidents = async (req, res, next) => {
-  const status = req.query.status;
-  if (status !== undefined && !VERIFICATION_STATUSES.includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid verification status.",
-    });
-  }
-
   try {
-    const statusClause =
-      status === undefined ? "" : "AND incidents.verification_status = ?";
-    const parameters =
-      status === undefined
-        ? TAGUIG_BARANGAY_PARAMS
-        : [...TAGUIG_BARANGAY_PARAMS, status];
     const [incidents] = await pool.execute(
       `SELECT
         incidents.id,
@@ -54,109 +27,13 @@ exports.getIncidents = async (req, res, next) => {
       JOIN locations
         ON incidents.location_id = locations.id
       WHERE ${TAGUIG_BARANGAY_SQL}
-      ${statusClause}
       ORDER BY incidents.incident_date DESC`,
-      parameters,
+      TAGUIG_BARANGAY_PARAMS,
     );
 
     return res.json({ success: true, data: incidents });
   } catch (error) {
     return next(error);
-  }
-};
-
-exports.getDashboardStats = async (req, res, next) => {
-  try {
-    const [rows] = await pool.execute(
-      `SELECT
-        COUNT(*) AS total,
-        COALESCE(SUM(incidents.verification_status = 'PENDING_REVIEW'), 0) AS pending,
-        COALESCE(SUM(incidents.verification_status = 'VERIFIED'), 0) AS verified,
-        COALESCE(SUM(incidents.verification_status = 'REJECTED'), 0) AS rejected,
-        COALESCE(SUM(incidents.verification_status = 'ARCHIVED'), 0) AS archived
-      FROM incidents
-      JOIN locations ON incidents.location_id = locations.id
-      WHERE ${TAGUIG_BARANGAY_SQL}`,
-      TAGUIG_BARANGAY_PARAMS,
-    );
-
-    const stats = rows[0];
-    return res.json({
-      success: true,
-      data: Object.fromEntries(
-        Object.entries(stats).map(([key, value]) => [key, Number(value)]),
-      ),
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
-
-exports.updateVerificationStatus = async (req, res, next) => {
-  const incidentId = Number(req.params.id);
-  const { status } = req.body || {};
-
-  if (!Number.isSafeInteger(incidentId) || incidentId <= 0) {
-    return res.status(400).json({
-      success: false,
-      message: "A valid incident id is required.",
-    });
-  }
-
-  if (!VERIFICATION_STATUSES.includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid verification status.",
-    });
-  }
-
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-    const [incidents] = await connection.execute(
-      `SELECT incidents.verification_status
-       FROM incidents
-       JOIN locations ON incidents.location_id = locations.id
-       WHERE incidents.id = ? AND ${TAGUIG_BARANGAY_SQL}
-       FOR UPDATE`,
-      [incidentId, ...TAGUIG_BARANGAY_PARAMS],
-    );
-
-    if (incidents.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({
-        success: false,
-        message: "Incident not found.",
-      });
-    }
-
-    const currentStatus = incidents[0].verification_status;
-    if (currentStatus !== status) {
-      if (!ALLOWED_TRANSITIONS[currentStatus]?.includes(status)) {
-        await connection.rollback();
-        return res.status(409).json({
-          success: false,
-          message: `Cannot change an incident from ${currentStatus} to ${status}.`,
-        });
-      }
-
-      await connection.execute(
-        "UPDATE incidents SET verification_status = ? WHERE id = ?",
-        [status, incidentId],
-      );
-    }
-
-    await connection.commit();
-    return res.json({
-      success: true,
-      data: { id: incidentId, verification_status: status },
-    });
-  } catch (error) {
-    if (connection) await connection.rollback();
-    return next(error);
-  } finally {
-    connection?.release();
   }
 };
 

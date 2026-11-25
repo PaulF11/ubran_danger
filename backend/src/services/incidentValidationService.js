@@ -252,18 +252,11 @@ function validateCandidate(candidate = {}) {
   };
 
   const isValid = errors.length === 0;
-  const rejectionPattern =
-    /Category|City|Barangay|Coordinates|Source name|Source URL|Source evidence|trusted allowlist|Coordinate source/i;
-
   return {
     isValid,
     errors,
     normalized,
-    status: isValid
-      ? "VERIFIED"
-      : errors.some((error) => rejectionPattern.test(error))
-        ? "REJECTED"
-        : "PENDING_REVIEW",
+    status: isValid ? "VERIFIED" : "REJECTED",
   };
 }
 

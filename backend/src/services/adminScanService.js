@@ -3,7 +3,9 @@
 const pool = require("../config/database");
 const { runManualIngestion } = require("./scheduledIngestionService");
 const { runAutomatedIngestion } = require("./automatedIncidentPipeline");
-const { createAdminScanReviewService } = require("./adminScanReviewService");
+const {
+  createIngestionScanResultService,
+} = require("./ingestionScanResultService");
 
 const BACKGROUND_FUNCTION_PATH = "/.netlify/functions/ingest-background";
 
@@ -12,7 +14,7 @@ function createAdminScanService({
   environment = process.env,
   runManual = runManualIngestion,
   runPipeline = runAutomatedIngestion,
-  reviewStore = createAdminScanReviewService({ database }),
+  scanResultStore = createIngestionScanResultService({ database }),
   fetchImpl = fetch,
   logger = console,
 } = {}) {
@@ -66,8 +68,7 @@ function createAdminScanService({
       runPipeline: (context) =>
         runPipeline({
           ...context,
-          persistVerifiedCandidates: false,
-          reviewStore,
+          scanResultStore,
         }),
       logger,
     });

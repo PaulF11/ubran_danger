@@ -122,7 +122,7 @@ test("cleanup deletes only expired incident and candidate records transactionall
           ),
         ];
       }
-      if (sql.startsWith("DELETE FROM admin_scan_candidates WHERE id IN")) {
+      if (sql.startsWith("DELETE FROM ingestion_scan_results WHERE id IN")) {
         return [{ affectedRows: parameters.length }];
       }
       if (
@@ -134,9 +134,6 @@ test("cleanup deletes only expired incident and candidate records transactionall
         return [[{ id: 40, locationId: 7 }]];
       }
       if (sql.includes("SELECT id, location_id AS locationId")) return [[]];
-      if (sql.includes("DELETE FROM admin_scan_candidates") && sql.includes("WHERE incident_id IN")) {
-        return [{ affectedRows: 1 }];
-      }
       if (sql.startsWith("DELETE FROM incidents")) {
         return [{ affectedRows: 1 }];
       }

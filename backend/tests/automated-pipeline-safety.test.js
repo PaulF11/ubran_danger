@@ -23,13 +23,21 @@ const emptyProcessedSources = {
   recordProcessed: async () => {},
 };
 
-test("Gemini rate-limit, timeout, and malformed response errors never persist candidates", async () => {
-  for (const error of [
-    new Error(
-      "Incident extraction provider was rate-limited after retries (HTTP 429).",
-    ),
-    new Error("Gemini request timed out."),
-    new Error("Incident extraction provider returned a non-JSON candidate."),
+test("rate limits, timeouts, and malformed responses remain distinct and never persist", async () => {
+  for (const [error, expectedStatus, retryable] of [
+    [
+      new Error(
+        "Incident extraction provider was rate-limited after retries (HTTP 429).",
+      ),
+      "RATE_LIMITED",
+      true,
+    ],
+    [new Error("Gemini request timed out."), "EXTRACTION_FAILED", true],
+    [
+      new Error("Incident extraction provider returned a non-JSON candidate."),
+      "EXTRACTION_FAILED",
+      false,
+    ],
   ]) {
     let persistenceCalls = 0;
     const summary = await runAutomatedIngestion({
@@ -44,8 +52,9 @@ test("Gemini rate-limit, timeout, and malformed response errors never persist ca
       },
     });
     assert.equal(summary.insertedIncidents, 0);
-    assert.equal(summary.results[0].status, "PENDING_REVIEW");
+    assert.equal(summary.results[0].status, expectedStatus);
     assert.equal(summary.results[0].verified, false);
+    assert.equal(summary.results[0].retryable, retryable);
     assert.equal(persistenceCalls, 0);
   }
 });
@@ -66,10 +75,14 @@ test("source retrieval failure returns an empty result and a failure count", asy
   assert.equal(summary.insertedIncidents, 0);
 });
 
-test("database persistence failure leaves the article pending review", async () => {
+test("database persistence failures are retryable and are not classified as rejected articles", async () => {
+  const recorded = [];
   const summary = await runAutomatedIngestion({
     collector: async () => [article],
-    processedSources: emptyProcessedSources,
+    processedSources: {
+      findProcessed: async () => new Set(),
+      recordProcessed: async (url, status) => recorded.push({ url, status }),
+    },
     extractor: async () => candidate,
     verifier: async () => ({ verified: true, status: "VERIFIED" }),
     persister: async () => {
@@ -77,8 +90,11 @@ test("database persistence failure leaves the article pending review", async () 
     },
   });
   assert.equal(summary.insertedIncidents, 0);
-  assert.equal(summary.results[0].status, "PENDING_REVIEW");
+  assert.equal(summary.results[0].status, "PERSISTENCE_FAILED");
   assert.equal(summary.results[0].verified, false);
+  assert.equal(summary.results[0].retryable, true);
+  assert.equal(summary.candidatesRejected, 0);
+  assert.deepEqual(recorded, [{ url: article.url, status: "RETRY" }]);
 });
 
 test("previously processed sources are skipped before Gemini extraction", async () => {
@@ -151,6 +167,8 @@ test("a Gemini rate limit pauses remaining candidate requests in the scan", asyn
   assert.equal(summary.geminiRequests, 1);
   assert.equal(summary.rateLimitCount, 1);
   assert.equal(summary.articlesSkipped, 1);
+  assert.equal(summary.results[0].status, "RATE_LIMITED");
+  assert.equal(summary.results[1].status, "RATE_LIMITED");
   assert.deepEqual(recorded, [
     { url: article.url, status: "RETRY" },
     { url: `${article.url}-2`, status: "RETRY" },
@@ -171,8 +189,49 @@ test("a Gemini HTTP 5xx failure remains eligible for a later retry", async () =>
   });
 
   assert.equal(summary.geminiRequests, 1);
-  assert.equal(summary.results[0].status, "PENDING_REVIEW");
+  assert.equal(summary.results[0].status, "EXTRACTION_FAILED");
   assert.deepEqual(recorded, [{ url: article.url, status: "RETRY" }]);
+});
+
+test("rate-limited sources resume on a later run without inserting duplicates", async () => {
+  const retrySources = new Set();
+  let extractionCalls = 0;
+  let persistenceCalls = 0;
+  const processedSources = {
+    async findProcessed(urls) {
+      return new Set();
+    },
+    async recordProcessed(url, status) {
+      if (status === "PROCESSED") retrySources.delete(url);
+      else retrySources.add(url);
+    },
+  };
+  const options = {
+    collector: async () => [article],
+    processedSources,
+    extractor: async () => {
+      extractionCalls += 1;
+      if (extractionCalls === 1) {
+        throw new Error("provider rate-limited after retries (HTTP 429)");
+      }
+      return candidate;
+    },
+    verifier: async () => ({ verified: true, status: "VERIFIED" }),
+    persister: async () => {
+      persistenceCalls += 1;
+      return { status: "DUPLICATE", inserted: false };
+    },
+  };
+
+  const limitedRun = await runAutomatedIngestion(options);
+  const resumedRun = await runAutomatedIngestion(options);
+
+  assert.equal(limitedRun.results[0].status, "RATE_LIMITED");
+  assert.equal(resumedRun.results[0].status, "DUPLICATE");
+  assert.equal(extractionCalls, 2);
+  assert.equal(persistenceCalls, 1);
+  assert.equal(resumedRun.insertedIncidents, 0);
+  assert.equal(retrySources.has(article.url), false);
 });
 
 test("unavailable and timed-out source requests are safely counted without live HTTP", async () => {

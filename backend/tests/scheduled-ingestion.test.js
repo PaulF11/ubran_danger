@@ -256,7 +256,14 @@ test("HTTP 429 and Gemini timeout results remain unverified and are categorized"
         sourcesFailed: 0,
         verificationFailures: 1,
         results: [
-          { status: "PENDING_REVIEW", verified: false, reasons: [reason] },
+          {
+            status:
+              expectedCategory === "gemini_rate_limit"
+                ? "RATE_LIMITED"
+                : "EXTRACTION_FAILED",
+            verified: false,
+            reasons: [reason],
+          },
         ],
       }),
     });

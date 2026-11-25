@@ -42,7 +42,9 @@ function validateIngestionEnvironment(environment) {
 function errorCategory(error) {
   const message = error?.message || "";
   if (/configuration/i.test(message)) return "configuration";
-  if (/429|rate-limit/i.test(message)) return "gemini_rate_limit";
+  if (/429|rate.?limit|quota|resource_exhausted/i.test(message)) {
+    return "gemini_rate_limit";
+  }
   if (/timeout|timed out|abort/i.test(message)) return "timeout";
   if (/database|mysql|query|connection/i.test(message)) return "database";
   if (/source/i.test(message)) return "source";
@@ -83,7 +85,11 @@ async function runManualIngestion({
     locked = true;
     const result = await runPipeline({ runId, runSource: "MANUAL" });
     const sourceFailures = Number(result.sourcesFailed || 0);
-    const candidateFailures = Number(result.verificationFailures || 0);
+    const candidateFailures =
+      Number(result.verificationFailures || 0) +
+      Number(result.extractionFailures || 0) +
+      Number(result.persistenceFailures || 0) +
+      Number(result.rateLimitCount || 0);
     await runHistory.finishRun(connection, runId, {
       status:
         sourceFailures > 0 || candidateFailures > 0 ? "PARTIAL" : "SUCCEEDED",
@@ -175,7 +181,11 @@ async function runScheduledIngestion({
     const result = await runPipeline({ runId, runSource });
     const durationMs = Math.max(0, now() - startedAt);
     const sourceFailures = Number(result.sourcesFailed || 0);
-    const articleFailures = Number(result.verificationFailures || 0);
+    const articleFailures =
+      Number(result.verificationFailures || 0) +
+      Number(result.extractionFailures || 0) +
+      Number(result.persistenceFailures || 0) +
+      Number(result.rateLimitCount || 0);
     const articleError = result.results
       ?.flatMap((item) => item.reasons || [])
       .join(" ");

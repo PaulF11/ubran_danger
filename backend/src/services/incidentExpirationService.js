@@ -45,7 +45,7 @@ function createIncidentExpirationService({
     throw new RangeError("Incident expiration batch size must be 1-1000.");
   }
 
-  async function removeExpiredReviewCandidates(connection, currentDate) {
+  async function removeExpiredScanResults(connection, currentDate) {
     let afterId = 0;
     let deleted = 0;
     const invalidCandidateIds = [];
@@ -54,7 +54,7 @@ function createIncidentExpirationService({
       const batch = await inTransaction(connection, async () => {
         const [rows] = await connection.execute(
           `SELECT id, candidate_json AS candidate
-           FROM admin_scan_candidates
+           FROM ingestion_scan_results
            WHERE id > ? AND candidate_json IS NOT NULL
            ORDER BY id ASC
            LIMIT ? FOR UPDATE`,
@@ -76,7 +76,7 @@ function createIncidentExpirationService({
         if (expiredIds.length > 0) {
           const placeholders = expiredIds.map(() => "?").join(", ");
           await connection.execute(
-            `DELETE FROM admin_scan_candidates WHERE id IN (${placeholders})`,
+            `DELETE FROM ingestion_scan_results WHERE id IN (${placeholders})`,
             expiredIds,
           );
         }
@@ -106,11 +106,6 @@ function createIncidentExpirationService({
 
       const incidentIds = incidents.map(({ id }) => id);
       const incidentPlaceholders = incidentIds.map(() => "?").join(", ");
-      await connection.execute(
-        `DELETE FROM admin_scan_candidates
-         WHERE incident_id IN (${incidentPlaceholders})`,
-        incidentIds,
-      );
       await connection.execute(
         `DELETE FROM incidents WHERE id IN (${incidentPlaceholders})`,
         incidentIds,
@@ -165,7 +160,7 @@ function createIncidentExpirationService({
         );
       }
 
-      const candidateResult = await removeExpiredReviewCandidates(
+      const candidateResult = await removeExpiredScanResults(
         connection,
         currentDate,
       );

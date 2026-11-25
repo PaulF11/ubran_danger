@@ -47,12 +47,10 @@ function App() {
   const [scanStatus, setScanStatus] = useState("IDLE");
   const [scanAfterRunId, setScanAfterRunId] = useState(null);
   const [scanRunId, setScanRunId] = useState(null);
-  const [scanCandidates, setScanCandidates] = useState([]);
+  const [scanResults, setScanResults] = useState([]);
   const [scanStats, setScanStats] = useState(null);
   const [scanMessage, setScanMessage] = useState("");
-  const [scanCandidateDetail, setScanCandidateDetail] = useState(null);
-  const [approvalCandidate, setApprovalCandidate] = useState(null);
-  const [reviewingCandidateId, setReviewingCandidateId] = useState(null);
+  const [scanResultDetail, setScanResultDetail] = useState(null);
   const [filters, setFilters] = useState({
     category: "",
     severity: "",
@@ -113,7 +111,7 @@ function App() {
           let reportError = "";
           try {
             reports = await request(
-              `/scan-candidates?runId=${encodeURIComponent(run.id)}`,
+              `/scan-results?runId=${encodeURIComponent(run.id)}`,
               token,
             );
           } catch (failure) {
@@ -122,7 +120,7 @@ function App() {
           if (!active) return;
           setScanStats(run);
           setScanRunId(Number(run.id));
-          setScanCandidates(reports);
+          setScanResults(reports);
           setScanStatus(
             run.status === "FAILED" || run.status === "SKIPPED"
               ? "FAILED"
@@ -189,13 +187,13 @@ function App() {
           run.status === "SKIPPED"
             ? []
             : await request(
-                `/scan-candidates?runId=${encodeURIComponent(run.id)}`,
+                `/scan-results?runId=${encodeURIComponent(run.id)}`,
                 token,
               );
         if (!active) return;
         setScanStats(run);
         setScanRunId(Number(run.id));
-        setScanCandidates(reports);
+        setScanResults(reports);
         setScanStatus(
           run.status === "FAILED" || run.status === "SKIPPED"
             ? "FAILED"
@@ -243,7 +241,7 @@ function App() {
   async function runScan() {
     setScanAfterRunId(null);
     setScanRunId(null);
-    setScanCandidates([]);
+    setScanResults([]);
     setScanStatus("RUNNING");
     setScanStats(null);
     setScanMessage("");
@@ -264,9 +262,9 @@ function App() {
       );
       if (result.status === "COMPLETED" && result.runId) {
         setScanRunId(Number(result.runId));
-        setScanCandidates(
+        setScanResults(
           await request(
-            `/scan-candidates?runId=${encodeURIComponent(result.runId)}`,
+            `/scan-results?runId=${encodeURIComponent(result.runId)}`,
             token,
           ),
         );
@@ -277,41 +275,6 @@ function App() {
     } catch (failure) {
       setScanStatus("FAILED");
       setScanMessage(failure.message);
-    }
-  }
-
-  async function confirmScanCandidateApproval() {
-    if (!approvalCandidate) return;
-    const candidate = approvalCandidate;
-    setReviewingCandidateId(candidate.id);
-    setError("");
-    try {
-      const result = await request(
-        `/scan-candidates/${candidate.id}/approve`,
-        token,
-        {
-          method: "POST",
-          body: JSON.stringify({ confirmed: true }),
-        },
-      );
-      const reports = await request(
-        `/scan-candidates?runId=${encodeURIComponent(candidate.runId)}`,
-        token,
-      );
-      setScanCandidates(reports);
-      setApprovalCandidate(null);
-      setScanMessage(
-        result.reviewStatus === "APPROVED"
-          ? `Verified incident added to Urban Danger as #${result.incidentId}.`
-          : `Not added: ${result.verificationStatus || result.reviewStatus}. Review the updated report details.`,
-      );
-      if (result.reviewStatus === "APPROVED" && view === "dashboard") {
-        setData(await request("/dashboard", token));
-      }
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setReviewingCandidateId(null);
     }
   }
 
@@ -447,10 +410,8 @@ function App() {
               scanStatus={scanStatus}
               scanStats={scanStats}
               scanMessage={scanMessage}
-              scanCandidates={scanCandidates}
-              reviewingCandidateId={reviewingCandidateId}
-              onViewCandidate={setScanCandidateDetail}
-              onApproveCandidate={setApprovalCandidate}
+              scanResults={scanResults}
+              onViewScanResult={setScanResultDetail}
             />
           )}
           {!loading && view === "incidents" && (
@@ -474,18 +435,10 @@ function App() {
           onClose={() => setIncidentDetail(null)}
         />
       )}
-      {scanCandidateDetail && (
-        <ScanCandidateDialog
-          item={scanCandidateDetail}
-          onClose={() => setScanCandidateDetail(null)}
-        />
-      )}
-      {approvalCandidate && (
-        <ApprovalDialog
-          item={approvalCandidate}
-          busy={reviewingCandidateId === approvalCandidate.id}
-          onCancel={() => setApprovalCandidate(null)}
-          onConfirm={confirmScanCandidateApproval}
+      {scanResultDetail && (
+        <ScanResultDialog
+          item={scanResultDetail}
+          onClose={() => setScanResultDetail(null)}
         />
       )}
     </div>
@@ -500,10 +453,8 @@ function Dashboard({
   scanStatus,
   scanStats,
   scanMessage,
-  scanCandidates,
-  reviewingCandidateId,
-  onViewCandidate,
-  onApproveCandidate,
+  scanResults,
+  onViewScanResult,
 }) {
   if (!data)
     return (
@@ -610,11 +561,9 @@ function Dashboard({
           </dl>
         )}
         {scanRunId !== null && (
-          <ScanCandidateList
-            items={scanCandidates}
-            reviewingCandidateId={reviewingCandidateId}
-            onView={onViewCandidate}
-            onApprove={onApproveCandidate}
+          <ScanResultList
+            items={scanResults}
+            onView={onViewScanResult}
           />
         )}
       </section>
@@ -648,19 +597,30 @@ function Dashboard({
   );
 }
 
-function ScanCandidateList({
-  items,
-  reviewingCandidateId,
-  onView,
-  onApprove,
-}) {
+function ScanResultList({ items, onView }) {
   function reportOutcome(item) {
     const reasons = Array.isArray(item.reasons) ? item.reasons : [];
     const reasonText = reasons.join(" ");
-    const status = String(item.verificationStatus || item.scanStatus || "")
+    const persistenceStatus = String(item.persistenceStatus || "")
+      .trim()
+      .toUpperCase();
+    const status = String(item.scanStatus || item.verificationStatus || "")
       .trim()
       .toUpperCase();
 
+    if (persistenceStatus === "INSERTED") {
+      return { label: "Added", className: "verified" };
+    }
+    if (persistenceStatus === "DUPLICATE" || status === "DUPLICATE") {
+      return { label: "Duplicate", className: "skipped" };
+    }
+    if (persistenceStatus === "CONFLICT" || status === "CONFLICT") {
+      return { label: "Conflict", className: "error" };
+    }
+    if (status === "RATE_LIMITED" || /\b429\b|rate.?limit/i.test(reasonText)) {
+      return { label: "Rate Limited", className: "rate-limited" };
+    }
+    if (item.retryable) return { label: "Retry", className: "retry" };
     if (status === "VERIFIED") return { label: "Verified", className: "verified" };
     if (status === "REJECTED") {
       return { label: "Not verified", className: "not-verified" };
@@ -668,24 +628,23 @@ function ScanCandidateList({
     if (
       status === "NOT_AN_INCIDENT" ||
       status === "SKIPPED_PROCESSED" ||
-      status === "SKIPPED"
+      status === "SKIPPED" ||
+      status === "EXPIRED"
     ) {
       return { label: "Skipped", className: "skipped" };
-    }
-    if (/\b429\b|rate.?limit/i.test(reasonText)) {
-      return { label: "Rate Limited", className: "rate-limited" };
     }
     if (/\b408\b|\b5\d{2}\b|timeout|timed out|abort|database|mysql|connection/i.test(reasonText)) {
       return { label: "Retry", className: "retry" };
     }
     if (
-      item.candidate &&
-      (status === "UNVERIFIED" || status === "PENDING_REVIEW")
+      status === "EXTRACTION_FAILED" ||
+      status === "VERIFICATION_FAILED" ||
+      status === "PERSISTENCE_FAILED"
     ) {
-      return { label: "Candidate", className: "candidate" };
+      return { label: "Failed", className: "error" };
     }
     if (status === "UNVERIFIED" || status === "PENDING_REVIEW") {
-      return { label: "Error", className: "error" };
+      return { label: "Unverified", className: "error" };
     }
     return {
       label: status ? status.replaceAll("_", " ") : "Unavailable",
@@ -757,21 +716,6 @@ function ScanCandidateList({
     return labels[status] || "Unavailable";
   }
 
-  function reviewOutcome(item) {
-    const status = String(item.reviewStatus || "")
-      .trim()
-      .toUpperCase();
-    if (status === "PENDING") {
-      return item.verificationStatus === "VERIFIED" && item.candidate
-        ? "READY"
-        : null;
-    }
-    if (status === "NOT_ACTIONABLE") return null;
-    if (status === "APPROVING") return "ADDING";
-    if (status === "REJECTED") return "NO_ACTION";
-    return status || null;
-  }
-
   return (
     <div className="scan-results">
       <div className="scan-results-heading">
@@ -784,11 +728,6 @@ function ScanCandidateList({
         const candidate = item.candidate || {};
         const outcome = reportOutcome(item);
         const attempted = extractionAttempt(item);
-        const reviewStatus = reviewOutcome(item);
-        const canApprove =
-          (item.reviewStatus === "READY" || item.reviewStatus === "PENDING") &&
-          item.verificationStatus === "VERIFIED" &&
-          Boolean(item.candidate);
         return (
           <article className="scan-result" key={item.id}>
             <div className="scan-result-top">
@@ -803,7 +742,6 @@ function ScanCandidateList({
                 <span className={`run-status status-${outcome.className}`}>
                   {outcome.label}
                 </span>
-                {reviewStatus && <RunStatus value={reviewStatus} />}
               </div>
             </div>
             <dl className="scan-result-facts">
@@ -867,6 +805,11 @@ function ScanCandidateList({
                 value={verificationResult(item)}
               />
               <Detail
+                label="Persistence status"
+                value={item.persistenceStatus || "Not persisted"}
+              />
+              <Detail label="Retryable" value={item.retryable ? "Yes" : "No"} />
+              <Detail
                 label="Category"
                 value={
                   candidate.category ||
@@ -924,15 +867,6 @@ function ScanCandidateList({
               <button className="secondary-button" onClick={() => onView(item)}>
                 View Details
               </button>
-              {canApprove && (
-                <button
-                  className="primary-button"
-                  disabled={reviewingCandidateId === item.id}
-                  onClick={() => onApprove(item)}
-                >
-                  Add to Urban Danger
-                </button>
-              )}
             </div>
           </article>
         );
@@ -941,7 +875,7 @@ function ScanCandidateList({
   );
 }
 
-function ScanCandidateDialog({ item, onClose }) {
+function ScanResultDialog({ item, onClose }) {
   const candidate = item.candidate || {};
   return (
     <div className="dialog-backdrop" role="presentation" onClick={onClose}>
@@ -972,7 +906,8 @@ function ScanCandidateDialog({ item, onClose }) {
           <Detail label="Incident date/time" value={candidate.incidentDate ? `${formatDate(candidate.incidentDate)}${candidate.incidentTimeKnown ? "" : " · time not reported"}` : null} />
           <Detail label="Published" value={formatDate(item.sourcePublishedAt)} />
           <Detail label="Verification status" value={item.verificationStatus || item.scanStatus} />
-          <Detail label="Review status" value={item.reviewStatus} />
+          <Detail label="Persistence status" value={item.persistenceStatus || "Not persisted"} />
+          <Detail label="Retryable" value={item.retryable ? "Yes" : "No"} />
           <Detail label="Verification method" value={candidate.verificationMethod} />
           <Detail label="Source event facts" value={candidate.sourceEvidence?.eventFacts} />
           <Detail
@@ -991,51 +926,6 @@ function ScanCandidateDialog({ item, onClose }) {
             View original source ↗
           </a>
         )}
-      </section>
-    </div>
-  );
-}
-
-function ApprovalDialog({ item, busy, onCancel, onConfirm }) {
-  const candidate = item.candidate || {};
-  return (
-    <div className="dialog-backdrop" role="presentation" onClick={onCancel}>
-      <section
-        className="dialog approval-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="approval-title"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="dialog-head">
-          <div>
-            <p className="eyebrow">ADMIN REVIEW</p>
-            <h2 id="approval-title">Add verified incident?</h2>
-          </div>
-          <button className="close-button" onClick={onCancel} aria-label="Cancel approval">
-            ×
-          </button>
-        </div>
-        <p className="muted">
-          Review the extracted information. It will be added to Urban Danger only after you confirm.
-        </p>
-        <dl className="detail-list">
-          <Detail label="Title" value={item.title} />
-          <Detail label="Source" value={item.sourceName} />
-          <Detail label="Source URL" value={item.sourceUrl} />
-          <Detail label="Location" value={candidate.locationDescription || candidate.barangay} />
-          <Detail label="Category / severity" value={[candidate.category || candidate.categoryName, candidate.severity].filter(Boolean).join(" · ")} />
-          <Detail label="Incident date" value={formatDate(candidate.incidentDate)} />
-        </dl>
-        <p className="incident-description">{candidate.description || "No description extracted."}</p>
-        <div className="scan-result-actions">
-          <button className="secondary-button" disabled={busy} onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="primary-button" disabled={busy} onClick={onConfirm}>
-            {busy ? "Verifying…" : "Confirm Add to Urban Danger"}
-          </button>
-        </div>
       </section>
     </div>
   );

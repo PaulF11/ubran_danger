@@ -92,9 +92,9 @@ const reports = [
     sourcePublishedAt: "2026-10-12",
     severity: "LOW",
     description:
-      "Daily Tribune and Philstar reported on the same 6 October 2026 incident in New Lower Bicutan involving an alleged drug-related apprehension of a 24-year-old man. Police personnel were relieved while authorities investigated whether procedures were followed. The family allegations and police account remain disputed and pending review.",
-    verificationMethod: "Manual review of the Daily Tribune and Philstar reports; same-event duplicate consolidated and allegations retained as pending review.",
-    verificationStatus: "PENDING_REVIEW",
+      "Daily Tribune and Philstar reported on the same 6 October 2026 incident in New Lower Bicutan involving an alleged drug-related apprehension of a 24-year-old man. Police personnel were relieved while authorities investigated whether procedures were followed. The family allegations and police account remain disputed and are not independently verified.",
+    verificationMethod: "Manual review of the Daily Tribune and Philstar reports; same-event duplicate consolidated, but the report remains unverified.",
+    verified: false,
     additionalSources: [
       {
         sourceName: "Philstar",
@@ -308,7 +308,17 @@ async function main() {
     await connection.query(migration("007_incident_source_references.sql"));
     let inserted = 0;
     let duplicates = 0;
+    let skippedUnverified = 0;
     for (const report of reports) {
+      if (
+        report.verified === false ||
+        (report.verificationStatus &&
+          report.verificationStatus !== "VERIFIED")
+      ) {
+        skippedUnverified += 1;
+        continue;
+      }
+
       await connection.beginTransaction();
       try {
         const [existing] = await connection.execute(
@@ -375,7 +385,7 @@ async function main() {
         throw error;
       }
     }
-    console.log(JSON.stringify({ inserted, duplicates, pendingReview: reports.filter((report) => report.verificationStatus === "PENDING_REVIEW").length }));
+    console.log(JSON.stringify({ inserted, duplicates, skippedUnverified }));
   } finally {
     await connection.end();
   }
