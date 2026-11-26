@@ -11,6 +11,7 @@ const NAVIGATION = [
   ["ingestion-runs", "Ingestion history", "03"],
   ["sources", "Trusted sources", "04"],
   ["system-status", "System status", "05"],
+  ["news", "Taguig news review", "06"],
 ];
 
 async function request(path, token, options = {}) {
@@ -263,6 +264,10 @@ function App() {
     }
   }
 
+  async function refreshNews() {
+    setData(await request("/news", token));
+  }
+
   async function runScan() {
     setScanAfterRunId(null);
     setScanRunId(null);
@@ -456,6 +461,14 @@ function App() {
           )}
           {!loading && view === "sources" && <Sources data={data} />}
           {!loading && view === "system-status" && <SystemStatus data={data} />}
+          {!loading && view === "news" && (
+            <NewsReview
+              data={data}
+              token={token}
+              onError={setError}
+              onRefresh={refreshNews}
+            />
+          )}
         </div>
       </main>
       {incidentDetail && (
@@ -470,6 +483,332 @@ function App() {
           onClose={() => setScanResultDetail(null)}
         />
       )}
+    </div>
+  );
+}
+
+function NewsReview({ data, token, onError, onRefresh }) {
+  const [form, setForm] = useState({
+    title: "",
+    sourceUrl: "",
+    publishedDate: "",
+    summary: "",
+    imageUrl: "",
+  });
+  const [reviewChecks, setReviewChecks] = useState({});
+  const [busyId, setBusyId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  async function submitArticle(event) {
+    event.preventDefault();
+    setSaving(true);
+    onError("");
+    try {
+      await request(editingId === null ? "/news" : `/news/${editingId}`, token, {
+        method: editingId === null ? "POST" : "PATCH",
+        body: JSON.stringify(form),
+      });
+      setEditingId(null);
+      setForm({
+        title: "",
+        sourceUrl: "",
+        publishedDate: "",
+        summary: "",
+        imageUrl: "",
+      });
+      await onRefresh();
+    } catch (failure) {
+      onError(failure.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function editArticle(article) {
+    setEditingId(article.id);
+    setForm({
+      title: article.title,
+      sourceUrl: article.sourceUrl,
+      publishedDate: article.publishedDate,
+      summary: article.summary,
+      imageUrl: article.imageUrl || "",
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm({
+      title: "",
+      sourceUrl: "",
+      publishedDate: "",
+      summary: "",
+      imageUrl: "",
+    });
+  }
+
+  async function reviewArticle(article, status) {
+    const checks = reviewChecks[article.id] || {};
+    setBusyId(article.id);
+    onError("");
+    try {
+      await request(`/news/${article.id}/status`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status,
+          publisherVerified: checks.publisherVerified === true,
+          dateVerified: checks.dateVerified === true,
+          taguigRelevanceVerified: checks.taguigRelevanceVerified === true,
+          verificationNotes: checks.verificationNotes || "",
+        }),
+      });
+      await onRefresh();
+    } catch (failure) {
+      onError(failure.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const articles = Array.isArray(data) ? data : [];
+  return (
+    <div className="news-review-grid">
+      <section className="panel news-submit-panel">
+        <div className="panel-title">
+          <h3>{editingId === null ? "Submit an article for review" : "Edit pending article"}</h3>
+        </div>
+        <p className="muted">
+          Add only an original article from an approved publisher. Submissions
+          stay private until a separate review confirms the source, date, and
+          direct Taguig relevance. Approval never creates or verifies an
+          incident record.
+        </p>
+        <form className="news-submit-form" onSubmit={submitArticle}>
+          <label>
+            Actual headline
+            <input
+              maxLength={255}
+              minLength={10}
+              required
+              value={form.title}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, title: event.target.value }))
+              }
+            />
+          </label>
+          <label>
+            Original publisher article URL
+            <input
+              type="url"
+              placeholder="https://publisher.example/article"
+              required
+              value={form.sourceUrl}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  sourceUrl: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            Actual publication date
+            <input
+              type="date"
+              required
+              value={form.publishedDate}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  publishedDate: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            Accurate short description
+            <textarea
+              maxLength={600}
+              minLength={30}
+              required
+              rows={4}
+              value={form.summary}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, summary: event.target.value }))
+              }
+            />
+          </label>
+          <label>
+            Relevant image URL (optional)
+            <input
+              type="url"
+              value={form.imageUrl}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  imageUrl: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <button className="primary-button" disabled={saving}>
+            {saving
+              ? "Saving…"
+              : editingId === null
+                ? "Submit for review"
+                : "Save changes"}
+          </button>
+          {editingId !== null && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={cancelEdit}
+            >
+              Cancel editing
+            </button>
+          )}
+        </form>
+      </section>
+      <section className="panel news-queue-panel">
+        <div className="panel-title">
+          <h3>Article review queue</h3>
+          <span className="count-chip">{articles.length} records</span>
+        </div>
+        {articles.length === 0 ? (
+          <p className="muted">No articles have been submitted for review.</p>
+        ) : (
+          articles.map((article) => {
+            const checks = reviewChecks[article.id] || {};
+            const updateCheck = (key, value) =>
+              setReviewChecks((current) => ({
+                ...current,
+                [article.id]: { ...current[article.id], [key]: value },
+              }));
+            return (
+              <article className="news-review-item" key={article.id}>
+                <div className="news-review-heading">
+                  <div>
+                    <p className="eyebrow">{article.sourceName}</p>
+                    <h4>{article.title}</h4>
+                  </div>
+                  <span className="count-chip">{article.status}</span>
+                </div>
+                <p className="muted">
+                  Published {article.publishedDate} · Submitted{" "}
+                  {article.createdAt
+                    ? new Date(article.createdAt).toLocaleDateString()
+                    : "date unavailable"}
+                </p>
+                {article.reviewedBy && (
+                  <p className="muted">
+                    Reviewed by {article.reviewedBy}
+                    {article.reviewedAt
+                      ? ` · ${new Date(article.reviewedAt).toLocaleString()}`
+                      : ""}
+                  </p>
+                )}
+                {article.verificationNotes && (
+                  <p className="muted">{article.verificationNotes}</p>
+                )}
+                <p>{article.summary}</p>
+                <a
+                  className="source-link"
+                  href={article.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open original article ↗
+                </a>
+                {article.status === "PENDING" && (
+                  <div className="news-verification">
+                    <label className="news-check">
+                      <input
+                        type="checkbox"
+                        checked={checks.publisherVerified === true}
+                        onChange={(event) =>
+                          updateCheck("publisherVerified", event.target.checked)
+                        }
+                      />
+                      I opened the original publisher page and confirmed its identity.
+                    </label>
+                    <label className="news-check">
+                      <input
+                        type="checkbox"
+                        checked={checks.dateVerified === true}
+                        onChange={(event) =>
+                          updateCheck("dateVerified", event.target.checked)
+                        }
+                      />
+                      I confirmed the article’s actual publication date.
+                    </label>
+                    <label className="news-check">
+                      <input
+                        type="checkbox"
+                        checked={checks.taguigRelevanceVerified === true}
+                        onChange={(event) =>
+                          updateCheck(
+                            "taguigRelevanceVerified",
+                            event.target.checked,
+                          )
+                        }
+                      />
+                      The article directly concerns Taguig and the summary is accurate.
+                    </label>
+                    <label>
+                      Verification notes
+                      <textarea
+                        minLength={20}
+                        maxLength={500}
+                        rows={3}
+                        value={checks.verificationNotes || ""}
+                        onChange={(event) =>
+                          updateCheck("verificationNotes", event.target.value)
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+                <div className="scan-result-actions">
+                  {article.status === "PENDING" && (
+                    <>
+                      <button
+                        className="secondary-button"
+                        disabled={busyId === article.id}
+                        onClick={() => editArticle(article)}
+                      >
+                        Edit details
+                      </button>
+                      <button
+                        className="primary-button"
+                        disabled={busyId === article.id}
+                        onClick={() => reviewArticle(article, "VERIFIED")}
+                      >
+                        Approve as verified
+                      </button>
+                      <button
+                        className="danger-button"
+                        disabled={busyId === article.id}
+                        onClick={() => reviewArticle(article, "REJECTED")}
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  {article.status === "VERIFIED" && (
+                    <button
+                      className="danger-button"
+                      disabled={busyId === article.id}
+                      onClick={() => reviewArticle(article, "REJECTED")}
+                    >
+                      Withdraw from public feed
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })
+        )}
+      </section>
     </div>
   );
 }

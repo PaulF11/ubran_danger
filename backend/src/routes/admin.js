@@ -8,6 +8,7 @@ const { createAdminScanService } = require("../services/adminScanService");
 const {
   createIngestionScanResultService,
 } = require("../services/ingestionScanResultService");
+const { createNewsController } = require("../controllers/newsController");
 
 function createAdminRouter({
   database = pool,
@@ -16,6 +17,7 @@ function createAdminRouter({
   dataService,
   scanService,
   scanResultService,
+  newsController,
 } = {}) {
   const router = express.Router();
   const auth = createAdminAuth({ environment, now });
@@ -24,6 +26,7 @@ function createAdminRouter({
   const scan = scanService || createAdminScanService({ database, environment });
   const scanResults =
     scanResultService || createIngestionScanResultService({ database });
+  const news = newsController || createNewsController({ database });
 
   router.post("/login", auth.login);
   router.use(auth.authenticate);
@@ -109,6 +112,11 @@ function createAdminRouter({
     }
     return send(() => scanResults.listRunResults(runId))(req, res);
   });
+
+  router.get("/news", news.listAdminArticles);
+  router.post("/news", news.createPendingArticle);
+  router.patch("/news/:id", news.updatePendingArticle);
+  router.patch("/news/:id/status", news.reviewArticle);
 
   return router;
 }

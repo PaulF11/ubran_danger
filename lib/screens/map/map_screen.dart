@@ -1,7 +1,6 @@
 // File note: This file handles map_screen.dart.
 
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -62,7 +61,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   String _query = '';
   String? _errorMessage;
   bool _isLoading = true;
-  bool _showDensity = false;
   bool _tileError = false;
   int _tileRetry = 0;
   _MapMode _mode = _MapMode.incidents;
@@ -235,11 +233,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 }
               },
             ),
-            if (_showDensity && _mappableIncidents.length >= 3)
-              CircleLayer(
-                circles: _buildDensityCircles(),
-                optimizeRadiusInMeters: true,
-              ),
             if (_routePlans.isNotEmpty)
               PolylineLayer(
                 polylines: _routePlans.indexed
@@ -292,11 +285,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           _buildEmptyResults(context),
         if (_mode == _MapMode.route) _buildRouteControls(context),
         if (_locationMessage != null) _buildLocationMessage(context),
-        if (_mode == _MapMode.incidents && _showDensity)
-          _buildDensityLegend(
-            context,
-            hasEnoughReports: _mappableIncidents.length >= 3,
-          ),
       ],
     );
   }
@@ -353,20 +341,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           label: Text('$filterCount'),
           child: const Icon(Icons.tune),
         ),
-      ),
-      IconButton(
-        tooltip: _showDensity
-            ? 'Hide incident density'
-            : 'Show incident density',
-        visualDensity: isCompact
-            ? VisualDensity.compact
-            : VisualDensity.standard,
-        constraints: isCompact
-            ? const BoxConstraints.tightFor(width: 40, height: 40)
-            : null,
-        onPressed: () => setState(() => _showDensity = !_showDensity),
-        color: _showDensity ? theme.colorScheme.primary : null,
-        icon: const Icon(Icons.blur_on_outlined),
       ),
       IconButton(
         tooltip: _locationTracking && _currentPosition != null
@@ -948,28 +922,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     ),
   );
 
-  Widget _buildDensityLegend(
-    BuildContext context, {
-    required bool hasEnoughReports,
-  }) => Positioned(
-    bottom: 12,
-    right: 10,
-    child: SafeArea(
-      top: false,
-      child: Material(
-        elevation: 2,
-        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.zero,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          child: hasEnoughReports
-              ? const Text('Reported incident concentration')
-              : const Text('At least 3 reports needed for density view'),
-        ),
-      ),
-    ),
-  );
-
   Widget _buildRouteControls(BuildContext context) {
     final theme = Theme.of(context);
     final canAnalyze = _routeStart != null && _routeDestination != null;
@@ -1403,41 +1355,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       );
 
-  List<CircleMarker> _buildDensityCircles() {
-    final clusters = <String, _DensityCluster>{};
-    for (final incident in _mappableIncidents) {
-      final clusterKey =
-          '${incident.latitude!.toStringAsFixed(3)},${incident.longitude!.toStringAsFixed(3)}';
-      final cluster = clusters.putIfAbsent(
-        clusterKey,
-        () => _DensityCluster(LatLng(incident.latitude!, incident.longitude!)),
-      );
-      cluster.add(incident.severity);
-    }
-
-    return clusters.values
-        .map((cluster) {
-          final radius = math.min(420.0, 85.0 + math.sqrt(cluster.weight) * 58);
-          final alpha = (0.12 + math.min(cluster.weight, 8) * 0.025).clamp(
-            0.12,
-            0.32,
-          );
-          return CircleMarker(
-            point: cluster.center,
-            radius: radius,
-            useRadiusInMeter: true,
-            color: _severityColor(
-              cluster.highestSeverity,
-            ).withValues(alpha: alpha),
-            borderColor: _severityColor(
-              cluster.highestSeverity,
-            ).withValues(alpha: 0.62),
-            borderStrokeWidth: 1,
-          );
-        })
-        .toList(growable: false);
-  }
-
   Future<void> _openFilters() async {
     final filters = await showModalBottomSheet<MapFilters>(
       context: context,
@@ -1793,32 +1710,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Color _severityColor(String severity) =>
       _incidentSeverityColor(context, severity);
-}
-
-class _DensityCluster {
-  _DensityCluster(this.center);
-
-  final LatLng center;
-  int weight = 0;
-  String highestSeverity = 'LOW';
-
-  void add(String severity) {
-    final severityWeight = switch (severity.toUpperCase()) {
-      'LOW' => 1,
-      'MEDIUM' => 2,
-      'HIGH' => 4,
-      _ => 1,
-    };
-    weight += severityWeight;
-    if (severityWeight > _weightOf(highestSeverity)) highestSeverity = severity;
-  }
-
-  int _weightOf(String severity) => switch (severity.toUpperCase()) {
-    'LOW' => 1,
-    'MEDIUM' => 2,
-    'HIGH' => 4,
-    _ => 1,
-  };
 }
 
 class _IncidentMarkerSheet extends StatelessWidget {

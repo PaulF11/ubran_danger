@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../admin/admin_login_screen.dart';
 import '../../widgets/urban_danger_brand_mark.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -92,44 +91,6 @@ class ProfileScreen extends StatelessWidget {
               body:
                   'Map viewing, incidents, analytics, and route-related historical context for public awareness.',
               icon: Icons.info_outline,
-            ),
-            const SizedBox(height: 16),
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 7,
-                ),
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.zero,
-                  ),
-                  child: Icon(
-                    Icons.admin_panel_settings_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                title: const Text('Administrator access'),
-                subtitle: const Text(
-                  'Sign in to view the protected dashboard.',
-                ),
-                trailing: Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const AdminLoginScreen(),
-                    ),
-                  );
-                },
-              ),
             ),
           ],
         ),
