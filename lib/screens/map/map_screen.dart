@@ -1015,7 +1015,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     _selectedRouteIndex = 0;
                     _routeError = null;
                   });
-                  unawaited(_analyzeRoute(mode: _routeTravelMode));
                 },
           icon: const Icon(Icons.swap_vert),
         );
@@ -1395,7 +1394,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _showOutOfScopeMessage();
       return;
     }
-    final completingRoute = _routeStart != null && _routeDestination == null;
     _invalidateRouteRequest();
     setState(() {
       _routeError = null;
@@ -1408,9 +1406,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _routeDestination = point;
       }
     });
-    if (completingRoute) {
-      unawaited(_analyzeRoute(mode: _routeTravelMode));
-    }
   }
 
   Future<void> _editRouteEndpoint({required bool isStart}) async {
@@ -1589,9 +1584,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _selectedRouteIndex = 0;
       _routeError = null;
     });
-    if (_routeStart != null && _routeDestination != null) {
-      unawaited(_analyzeRoute(mode: _routeTravelMode));
-    }
   }
 
   LatLng? _parseRouteCoordinates(String? input) {
@@ -1683,9 +1675,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _selectedRouteIndex = 0;
       _routeError = null;
     });
-    if (_routeStart != null && _routeDestination != null) {
-      unawaited(_analyzeRoute(mode: mode));
-    }
   }
 
   void _showOutOfScopeMessage() {

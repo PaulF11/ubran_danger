@@ -86,82 +86,168 @@ void main() {
     }
   });
 
-  testWidgets(
-    'manual in-scope coordinates and mode changes recalculate routes',
-    (tester) async {
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
+  testWidgets('manual route changes wait for Analyze route', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
 
-      final requestedModes = <String>[];
-      final incidents = IncidentService(
-        client: MockClient(
-          (_) async =>
-              http.Response(jsonEncode({'success': true, 'data': []}), 200),
-        ),
-        baseUri: Uri.parse('https://example.test'),
-      );
-      final routes = RouteService(
-        client: MockClient((request) async {
-          requestedModes.add(
-            (jsonDecode(request.body) as Map<String, dynamic>)['mode']
-                as String,
-          );
-          return http.Response(
-            jsonEncode({'success': false, 'message': 'Test route failure'}),
-            502,
-          );
-        }),
-        baseUri: Uri.parse('https://example.test'),
-      );
-      addTearDown(incidents.close);
-      addTearDown(routes.close);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MapScreen(incidentService: incidents, routeService: routes),
-          ),
-        ),
-      );
-      await pumpRouteFrames(tester);
-      await tester.tap(find.text('Route analysis').first);
-      await pumpRouteFrames(tester);
-      await tester.tap(find.text('Plan a safer route'));
-      await pumpRouteFrames(tester);
-
-      for (final tooltip in [
-        'Enter start coordinates',
-        'Enter destination coordinates',
-      ]) {
-        await tester.ensureVisible(find.byTooltip(tooltip));
-        await tester.tap(find.byTooltip(tooltip));
-        await pumpRouteFrames(tester);
-        await tester.enterText(
-          find.byType(TextFormField).last,
-          '14.51760, 121.05090',
+    final requestedModes = <String>[];
+    final incidents = IncidentService(
+      client: MockClient(
+        (_) async =>
+            http.Response(jsonEncode({'success': true, 'data': []}), 200),
+      ),
+      baseUri: Uri.parse('https://example.test'),
+    );
+    final routes = RouteService(
+      client: MockClient((request) async {
+        requestedModes.add(
+          (jsonDecode(request.body) as Map<String, dynamic>)['mode'] as String,
         );
-        await tester.tap(find.text('Use location').last);
-        await pumpRouteFrames(tester);
-      }
-      expect(requestedModes, ['car']);
+        return http.Response(
+          jsonEncode({'success': false, 'message': 'Test route failure'}),
+          502,
+        );
+      }),
+      baseUri: Uri.parse('https://example.test'),
+    );
+    addTearDown(incidents.close);
+    addTearDown(routes.close);
 
-      for (final mode in ['Motorcycle', 'Walk', 'Bicycle', 'Truck', 'Car']) {
-        await tester.ensureVisible(find.text(mode));
-        await tester.tap(find.text(mode));
-        await pumpRouteFrames(tester);
-      }
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapScreen(incidentService: incidents, routeService: routes),
+        ),
+      ),
+    );
+    await pumpRouteFrames(tester);
+    await tester.tap(find.text('Route analysis').first);
+    await pumpRouteFrames(tester);
+    await tester.tap(find.text('Plan a safer route'));
+    await pumpRouteFrames(tester);
 
-      expect(requestedModes, [
-        'car',
-        'motorcycle',
-        'walking',
-        'bicycle',
-        'truck',
-        'car',
-      ]);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    for (final tooltip in [
+      'Enter start coordinates',
+      'Enter destination coordinates',
+    ]) {
+      await tester.ensureVisible(find.byTooltip(tooltip));
+      await tester.tap(find.byTooltip(tooltip));
+      await pumpRouteFrames(tester);
+      await tester.enterText(
+        find.byType(TextFormField).last,
+        '14.51760, 121.05090',
+      );
+      await tester.tap(find.text('Use location').last);
+      await pumpRouteFrames(tester);
+    }
+    expect(requestedModes, isEmpty);
+
+    await tester.tap(find.text('Analyze route').last);
+    await pumpRouteFrames(tester);
+    expect(requestedModes, ['car']);
+
+    await tester.ensureVisible(find.text('Motorcycle'));
+    await tester.tap(find.text('Motorcycle'));
+    await pumpRouteFrames(tester);
+
+    expect(requestedModes, ['car']);
+    await tester.ensureVisible(find.text('Analyze route').last);
+    await tester.tap(find.text('Analyze route').last);
+    await pumpRouteFrames(tester);
+    expect(requestedModes, ['car', 'motorcycle']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('map taps wait for Analyze route before requesting a route', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+
+    final requestedModes = <String>[];
+    final incidents = IncidentService(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [
+              {
+                'id': 1,
+                'category_name': 'Test incident',
+                'category_description': 'Test fixture.',
+                'city': 'Taguig City',
+                'barangay': null,
+                'latitude': null,
+                'longitude': null,
+                'location_description': null,
+                'location_source_name': null,
+                'location_source_url': null,
+                'description': 'Test fixture.',
+                'severity': 'LOW',
+                'incident_date': '2026-01-01',
+                'incident_time_known': false,
+                'source': 'Test fixture',
+                'source_name': 'Test fixture',
+                'source_url': null,
+                'source_published_at': null,
+                'verification_status': 'VERIFIED',
+                'verification_method': null,
+                'last_verified_at': null,
+              },
+            ],
+          }),
+          200,
+        ),
+      ),
+      baseUri: Uri.parse('https://example.test'),
+    );
+    final routes = RouteService(
+      client: MockClient((request) async {
+        requestedModes.add(
+          (jsonDecode(request.body) as Map<String, dynamic>)['mode'] as String,
+        );
+        return http.Response(
+          jsonEncode({'success': false, 'message': 'Test route failure'}),
+          502,
+        );
+      }),
+      baseUri: Uri.parse('https://example.test'),
+    );
+    addTearDown(incidents.close);
+    addTearDown(routes.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapScreen(incidentService: incidents, routeService: routes),
+        ),
+      ),
+    );
+    await pumpRouteFrames(tester);
+    await tester.tap(find.text('Route analysis').first);
+    await pumpRouteFrames(tester);
+    await tester.tap(find.text('Plan a safer route'));
+    await pumpRouteFrames(tester);
+
+    await tester.tapAt(const Offset(150, 380));
+    await pumpRouteFrames(tester);
+    expect(requestedModes, isEmpty);
+    expect(find.text('Tap map or enter coordinates'), findsOneWidget);
+
+    await tester.tapAt(const Offset(240, 380));
+    await pumpRouteFrames(tester);
+    expect(requestedModes, isEmpty);
+    expect(find.text('Tap map or enter coordinates'), findsNothing);
+    expect(find.text('Out of Scope'), findsNothing);
+
+    await tester.ensureVisible(find.text('Analyze route').last);
+    await tester.tap(find.text('Analyze route').last);
+    await pumpRouteFrames(tester);
+    expect(requestedModes, ['car']);
+    expect(tester.takeException(), isNull);
+  });
 }
